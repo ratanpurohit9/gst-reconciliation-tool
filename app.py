@@ -1,8 +1,112 @@
 # app.py — GST Reconciliation Tool Enterprise v4.0
 # ══════════════════════════════════════════════════════
-# LICENSE GATE — runs before any app logic
+# CLOUD LOGIN GATE — Each client has their own unique key
 # ══════════════════════════════════════════════════════
 import streamlit as _st
+import platform as _platform
+import hashlib as _hashlib
+
+def _cloud_login_gate():
+    """
+    On cloud (Linux): Each client must enter their unique activation key.
+    - Every client has a DIFFERENT key from key_hashes.py
+    - If a client shares their key, you can revoke it by removing that
+      hash from key_hashes.py and pushing to GitHub — app updates in 2 min.
+    - Key is stored in session — user must re-enter only when browser is closed.
+    On local EXE (Windows): This gate is completely skipped.
+    """
+    if _platform.system() != "Linux":
+        return  # Local EXE — skip cloud gate entirely
+
+    from modules.key_hashes import VALID_KEY_HASHES
+
+    # Already logged in this session — let them through
+    if _st.session_state.get("cloud_authenticated"):
+        return
+
+    # ── Show Login Screen ─────────────────────────────────────────────────────
+    _st.set_page_config(
+        page_title="GST Tool — Login",
+        page_icon="🔐",
+        layout="centered"
+    )
+
+    _st.markdown("""
+    <style>
+    .stApp {
+        background: linear-gradient(135deg, #0f2044 0%, #1a3a6e 50%, #0f52ba 100%);
+    }
+    .login-card {
+        background: white;
+        border-radius: 24px;
+        padding: 48px 52px;
+        max-width: 460px;
+        margin: 50px auto 0 auto;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.35);
+        text-align: center;
+    }
+    .login-title { color: #0f2044; font-size: 26px; font-weight: 700; margin-bottom: 4px; }
+    .login-sub   { color: #666; font-size: 14px; margin-bottom: 28px; }
+    .key-note    { color: #888; font-size: 12px; margin-top: 16px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    _st.markdown("""
+    <div class="login-card">
+        <div style="font-size:52px;">🔐</div>
+        <div class="login-title">GST Reconciliation Tool</div>
+        <div class="login-sub">Enterprise v4.0 — Please enter your access key</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    _st.markdown("### Enter Your Unique Access Key")
+    _st.caption("Each client has their own personal key. Contact the seller if you don't have one.")
+
+    _key_input = _st.text_input(
+        "Access Key",
+        placeholder="XXXX-XXXX-XXXX-XXXX",
+        max_chars=50,
+        label_visibility="collapsed"
+    )
+
+    col1, col2, col3 = _st.columns([1, 2, 1])
+    with col2:
+        login_btn = _st.button("🔓 Access App", type="primary", use_container_width=True)
+
+    if login_btn:
+        if not _key_input.strip():
+            _st.error("⚠️ Please enter your access key.")
+        else:
+            # Hash the entered key same way as license_manager
+            _entered_hash = _hashlib.sha256(
+                _key_input.strip().upper().encode()
+            ).hexdigest()
+
+            if _entered_hash in VALID_KEY_HASHES:
+                # ✅ Valid key — store in session
+                _st.session_state["cloud_authenticated"] = True
+                _st.session_state["cloud_key_hash"] = _entered_hash
+                _st.success("✅ Access granted! Loading app...")
+                _st.rerun()
+            else:
+                _st.error("❌ Invalid key. Please check and try again, or contact the seller.")
+                _st.info("💡 Each key is unique to one client. If you received this link from someone else, you need your own key.")
+
+    _st.markdown("---")
+    _st.markdown(
+        "<p style='text-align:center; color:#aaa; font-size:12px;'>"
+        "🔒 Your key is personal. Do not share it — shared keys can be revoked at any time."
+        "</p>",
+        unsafe_allow_html=True
+    )
+    _st.stop()  # ← Hard stop. Nothing below runs until key is entered.
+
+# Run the gate FIRST before anything else
+_cloud_login_gate()
+
+# ══════════════════════════════════════════════════════
+# LICENSE GATE — runs before any app logic
+# ══════════════════════════════════════════════════════
 
 # We need page config first, so set it here early if not already set
 # (The real set_page_config is called again below — Streamlit ignores duplicates)
