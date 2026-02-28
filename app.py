@@ -9,22 +9,36 @@ import hashlib as _hashlib
 def _cloud_login_gate():
     """
     On cloud (Linux): Each client must enter their unique activation key.
-    - Every client has a DIFFERENT key from key_hashes.py
-    - If a client shares their key, you can revoke it by removing that
-      hash from key_hashes.py and pushing to GitHub — app updates in 2 min.
-    - Key is stored in session — user must re-enter only when browser is closed.
+
+    HOW PERSISTENCE WORKS:
+    - After login, the key hash is saved in the URL as ?auth=HASH
+    - On every refresh, URL params are read automatically — no re-login needed
+    - Client bookmarks the URL with ?auth=HASH → never asked again
+    - If you revoke a key (remove hash from key_hashes.py), that URL stops
+      working within 2 minutes — client is blocked even with saved bookmark
+
     On local EXE (Windows): This gate is completely skipped.
     """
     if _platform.system() != "Linux":
-        return  # Local EXE — skip cloud gate entirely
+        return  # Local EXE — skip entirely
 
     from modules.key_hashes import VALID_KEY_HASHES
 
-    # Already logged in this session — let them through
+    # ── Check URL params first (survives refresh & bookmark) ─────────────────
+    _params = _st.query_params
+    _auth_from_url = _params.get("auth", "")
+
+    if _auth_from_url and _auth_from_url in VALID_KEY_HASHES:
+        # Valid hash in URL → let through, sync to session
+        _st.session_state["cloud_authenticated"] = True
+        _st.session_state["cloud_key_hash"] = _auth_from_url
+        return  # ✅ Authenticated via URL — no login screen shown
+
+    # ── Check session state (survives rerun within same tab) ──────────────────
     if _st.session_state.get("cloud_authenticated"):
         return
 
-    # ── Show Login Screen ─────────────────────────────────────────────────────
+    # ── Neither URL nor session valid → Show Login Screen ────────────────────
     _st.set_page_config(
         page_title="GST Tool — Login",
         page_icon="🔐",
@@ -36,70 +50,70 @@ def _cloud_login_gate():
     .stApp {
         background: linear-gradient(135deg, #0f2044 0%, #1a3a6e 50%, #0f52ba 100%);
     }
+    .login-wrap {
+        max-width: 460px;
+        margin: 60px auto 0 auto;
+    }
     .login-card {
         background: white;
         border-radius: 24px;
-        padding: 48px 52px;
-        max-width: 460px;
-        margin: 50px auto 0 auto;
-        box-shadow: 0 24px 64px rgba(0,0,0,0.35);
+        padding: 44px 48px 36px 48px;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.40);
         text-align: center;
     }
-    .login-title { color: #0f2044; font-size: 26px; font-weight: 700; margin-bottom: 4px; }
-    .login-sub   { color: #666; font-size: 14px; margin-bottom: 28px; }
-    .key-note    { color: #888; font-size: 12px; margin-top: 16px; }
+    .login-title { color: #0f2044; font-size: 24px; font-weight: 700; margin: 12px 0 4px 0; }
+    .login-sub   { color: #777; font-size: 13px; margin-bottom: 28px; }
+    .login-foot  { color: #aaa; font-size: 11px; margin-top: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
     _st.markdown("""
-    <div class="login-card">
-        <div style="font-size:52px;">🔐</div>
+    <div class="login-wrap">
+      <div class="login-card">
+        <div style="font-size:54px">🔐</div>
         <div class="login-title">GST Reconciliation Tool</div>
-        <div class="login-sub">Enterprise v4.0 — Please enter your access key</div>
+        <div class="login-sub">Enterprise v4.0 &nbsp;|&nbsp; Enter your personal access key</div>
+      </div>
     </div>
     """, unsafe_allow_html=True)
 
-    _st.markdown("### Enter Your Unique Access Key")
-    _st.caption("Each client has their own personal key. Contact the seller if you don't have one.")
-
+    _st.markdown("####")
     _key_input = _st.text_input(
         "Access Key",
         placeholder="XXXX-XXXX-XXXX-XXXX",
         max_chars=50,
-        label_visibility="collapsed"
+        label_visibility="visible"
     )
 
-    col1, col2, col3 = _st.columns([1, 2, 1])
-    with col2:
-        login_btn = _st.button("🔓 Access App", type="primary", use_container_width=True)
+    c1, c2, c3 = _st.columns([1, 2, 1])
+    with c2:
+        _login_btn = _st.button("🔓 Access App", type="primary", use_container_width=True)
 
-    if login_btn:
+    if _login_btn:
         if not _key_input.strip():
             _st.error("⚠️ Please enter your access key.")
         else:
-            # Hash the entered key same way as license_manager
             _entered_hash = _hashlib.sha256(
                 _key_input.strip().upper().encode()
             ).hexdigest()
 
             if _entered_hash in VALID_KEY_HASHES:
-                # ✅ Valid key — store in session
+                # ✅ Valid — save hash into URL so refresh never asks again
                 _st.session_state["cloud_authenticated"] = True
                 _st.session_state["cloud_key_hash"] = _entered_hash
-                _st.success("✅ Access granted! Loading app...")
+                _st.query_params["auth"] = _entered_hash  # ← persists in URL
                 _st.rerun()
             else:
-                _st.error("❌ Invalid key. Please check and try again, or contact the seller.")
-                _st.info("💡 Each key is unique to one client. If you received this link from someone else, you need your own key.")
+                _st.error("❌ Invalid key. Please check and try again.")
+                _st.info("💡 Your key is personal — if you got this link from someone else, you need to purchase your own key.")
 
-    _st.markdown("---")
     _st.markdown(
-        "<p style='text-align:center; color:#aaa; font-size:12px;'>"
-        "🔒 Your key is personal. Do not share it — shared keys can be revoked at any time."
+        "<p class='login-foot' style='text-align:center'>"
+        "🔒 Your key is tied to your account. Sharing it may result in access being revoked."
         "</p>",
         unsafe_allow_html=True
     )
-    _st.stop()  # ← Hard stop. Nothing below runs until key is entered.
+    _st.stop()
 
 # Run the gate FIRST before anything else
 _cloud_login_gate()
