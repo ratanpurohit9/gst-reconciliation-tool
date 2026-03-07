@@ -10,7 +10,7 @@ def safe_date_format(series):
     return temp.fillna(series)
 
 def generate_vendor_split_zip(full_df):
-    issue_mask = full_df['Recon_Status'].str.contains('Not in|Mismatch', na=False)
+    issue_mask = full_df['Recon_Status'].str.contains('Not in|Mismatch|Suggestion|Manual|Tax Error', na=False)
     vendors = full_df[issue_mask]['Name of Party'].unique().tolist()
     vendors = [v for v in vendors if v and str(v) != 'nan']
     zip_buffer = io.BytesIO()
@@ -40,16 +40,67 @@ def generate_vendor_split_zip(full_df):
             if 'Books Date'  in export_df.columns: export_df['Books Date'] =safe_date_format(export_df['Books Date'])
             excel_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_buffer,engine='xlsxwriter',datetime_format='dd/mm/yyyy') as writer:
-                export_df.to_excel(writer,index=False,startrow=1,sheet_name='Discrepancy Report')
+                export_df.to_excel(writer,index=False,startrow=2,sheet_name='Discrepancy Report')
                 wb=writer.book; ws=writer.sheets['Discrepancy Report']
-                fg=wb.add_format({'bold':True,'bg_color':'#70AD47','font_color':'white','border':1,'align':'center'})
-                fb=wb.add_format({'bold':True,'bg_color':'#ED7D31','font_color':'white','border':1,'align':'center'})
-                fd=wb.add_format({'bold':True,'bg_color':'#4472C4','font_color':'white','border':1,'align':'center'})
-                for cn,v in enumerate(list(export_df.columns)):
-                    ws.write(1,cn,v,fg if "Portal" in v else fb if "Books" in v else fd)
-                ws.merge_range('C1:H1',"UPLOADED BY YOU (GSTR-1)",fg)
-                ws.merge_range('I1:N1',"CORRECT RECORD (OUR BOOKS)",fb)
-                ws.set_column(0,1,20); ws.set_column(2,14,12)
+                # Formats
+                fmt_portal_hdr = wb.add_format({'bold':True,'bg_color':'#1F3864','font_color':'white','border':1,'align':'center','valign':'vcenter'})
+                fmt_books_hdr  = wb.add_format({'bold':True,'bg_color':'#C00000','font_color':'white','border':1,'align':'center','valign':'vcenter'})
+                fmt_info_hdr   = wb.add_format({'bold':True,'bg_color':'#2E75B6','font_color':'white','border':1,'align':'center','valign':'vcenter'})
+                fmt_diff_hdr   = wb.add_format({'bold':True,'bg_color':'#7030A0','font_color':'white','border':1,'align':'center','valign':'vcenter'})
+                # Status row formats
+                STATUS_ROW_COLORS = {
+                    'Invoices Not in GSTR-2B':       ('#FFF2F2','#C00000'),
+                    'Invoices Not in Purchase Books': ('#FFFBEA','#B8860B'),
+                    'AI Matched (Mismatch)':          ('#FFF0F0','#C00000'),
+                    'Matched (Tax Error)':            ('#FFFBEA','#B8860B'),
+                    'AI Matched (Date Mismatch)':     ('#EBF3FB','#2E75B6'),
+                    'AI Matched (Invoice Mismatch)':  ('#EBF3FB','#2E75B6'),
+                    'Suggestion':                     ('#EBF3FB','#2E75B6'),
+                    'Suggestion (Group Match)':       ('#EBF3FB','#2E75B6'),
+                    'Manually Linked':                ('#F0FFF4','#1E6B3C'),
+                }
+                row_fmts = {}
+                for st,(bg,fc_c) in STATUS_ROW_COLORS.items():
+                    row_fmts[st] = {
+                        'normal': wb.add_format({'bg_color':bg,'border':1,'valign':'vcenter'}),
+                        'number': wb.add_format({'bg_color':bg,'border':1,'valign':'vcenter','num_format':'#,##0.00'}),
+                        'bold':   wb.add_format({'bg_color':bg,'border':1,'valign':'vcenter','bold':True,'num_format':'#,##0.00','font_color':fc_c}),
+                    }
+                default_fmts = {
+                    'normal': wb.add_format({'border':1,'valign':'vcenter'}),
+                    'number': wb.add_format({'border':1,'valign':'vcenter','num_format':'#,##0.00'}),
+                    'bold':   wb.add_format({'border':1,'valign':'vcenter','bold':True,'num_format':'#,##0.00'}),
+                }
+                # Header row 1: group labels
+                ws.merge_range(0,0,0,1,'INVOICE DETAILS',fmt_info_hdr)
+                ws.merge_range(0,2,0,7,'GST PORTAL DATA (GSTR-1 Filed by Supplier)',fmt_portal_hdr)
+                ws.merge_range(0,8,0,13,'PURCHASE BOOKS DATA (Our Records)',fmt_books_hdr)
+                ws.write(0,14,'DIFFERENCE',fmt_diff_hdr)
+                # Header row 2: column names
+                cols = list(export_df.columns)
+                for cn,v in enumerate(cols):
+                    fmt = fmt_portal_hdr if 'Portal' in v else fmt_books_hdr if 'Books' in v else fmt_diff_hdr if 'Diff' in v else fmt_info_hdr
+                    ws.write(2,cn,v,fmt)
+                # Data rows with status coloring
+                num_cols = {'Portal Taxable','Portal IGST','Portal CGST','Portal SGST','Portal Total',
+                            'Books Taxable','Books IGST','Books CGST','Books SGST','Books Total','Diff Total'}
+                for rn, (_, row) in enumerate(export_df.iterrows()):
+                    st = str(row.get('Status',''))
+                    fmts = row_fmts.get(st, default_fmts)
+                    for cn, col in enumerate(cols):
+                        val = row[col]
+                        is_diff = col == 'Diff Total'
+                        if col in num_cols:
+                            try:
+                                ws.write_number(rn+3, cn, float(val) if pd.notna(val) else 0, fmts['bold'] if is_diff else fmts['number'])
+                            except:
+                                ws.write(rn+3, cn, val or '', fmts['normal'])
+                        else:
+                            ws.write(rn+3, cn, str(val) if pd.notna(val) else '', fmts['normal'])
+                # Column widths
+                ws.set_column(0,0,18); ws.set_column(1,1,14); ws.set_column(2,14,13)
+                ws.set_row(0,20); ws.set_row(2,18)
+                ws.freeze_panes(3,2)
             zip_file.writestr(f"{vendor}_Discrepancy.xlsx".replace('/','_'),excel_buffer.getvalue())
     return zip_buffer
 
