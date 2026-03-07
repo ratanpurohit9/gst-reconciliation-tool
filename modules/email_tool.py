@@ -1,213 +1,245 @@
-# modules/email_tool.py
+# modules/email_tool.py — Smart notice generator for ALL Recon_Status types
+
 import pandas as pd
 
-def get_vendors_with_issues(df):
-    """
-    Filter vendors who have 'Not in' or 'Mismatch' status.
-    """
-    issue_mask = df['Recon_Status'].str.contains('Not in|Mismatch', na=False)
-    vendors = df[issue_mask]['Name of Party'].unique().tolist()
-    vendors = [v for v in vendors if v and str(v) != 'nan']
-    return sorted(vendors)
+ISSUE_MASK = 'Not in|Mismatch|Suggestion|Manual|Tax Error'
 
-def fc(val): 
-    """Format Currency: Returns string like 1,234.00"""
+STATUS_MSG = {
+    "Invoices Not in GSTR-2B": {
+        "short":   "MISSING IN PORTAL",
+        "email":   "Invoice recorded in our Purchase Books is NOT reflecting in GSTR-2B.\n   Action: Upload this invoice in your GSTR-1 immediately.",
+        "wa":      "Missing in Portal - Please upload in GSTR-1",
+        "notice":  "MISSING INVOICE: Invoice exists in our books but not in GSTR-2B. Please upload in GSTR-1 immediately.",
+        "action":  "Upload in GSTR-1 at the earliest",
+    },
+    "Invoices Not in Purchase Books": {
+        "short":   "UNIDENTIFIED IN OUR BOOKS",
+        "email":   "Invoice appears in GSTR-2B (Portal) but is NOT in our Purchase Register.\n   Action: Provide invoice copy / proof of delivery, or issue Credit Note if uploaded in error.",
+        "wa":      "Not in our Books - Provide invoice copy or issue Credit Note",
+        "notice":  "UNIDENTIFIED RECORD: Invoice in portal but not in our books. Please provide invoice copy or issue Credit Note.",
+        "action":  "Provide invoice copy or issue Credit Note",
+    },
+    "AI Matched (Date Mismatch)": {
+        "short":   "DATE MISMATCH",
+        "email":   "Invoice matched by value but Date differs between GSTR-1 and our records.\n   Action: Amend the invoice date in your GSTR-1 to match our Purchase Records.",
+        "wa":      "Date Mismatch - Please amend invoice date in GSTR-1",
+        "notice":  "DATE DISCREPANCY: Invoice date in your GSTR-1 does not match our records. Please amend.",
+        "action":  "Amend invoice date in GSTR-1",
+    },
+    "AI Matched (Invoice Mismatch)": {
+        "short":   "INVOICE NO. MISMATCH",
+        "email":   "Invoice matched by value & date but Invoice Number differs.\n   Action: Amend the invoice number in your GSTR-1 to match our Purchase Records.",
+        "wa":      "Invoice No. Mismatch - Please amend invoice number in GSTR-1",
+        "notice":  "REFERENCE DISCREPANCY: Invoice number in your GSTR-1 does not match our records. Please amend.",
+        "action":  "Amend invoice number in GSTR-1",
+    },
+    "AI Matched (Mismatch)": {
+        "short":   "VALUE MISMATCH",
+        "email":   "Invoice identified but taxable value / tax amounts do not match.\n   Action: Amend the taxable value and tax amounts in your GSTR-1.",
+        "wa":      "Value Mismatch - Please amend invoice amounts in GSTR-1",
+        "notice":  "VALUE DISCREPANCY: Taxable/tax values in GSTR-1 don't match our books. Please amend.",
+        "action":  "Amend taxable value/tax in GSTR-1",
+    },
+    "Matched (Tax Error)": {
+        "short":   "TAX BREAKUP ERROR",
+        "email":   "Taxable value matches but IGST/CGST/SGST breakup shows a discrepancy. May cause ITC mismatch.\n   Action: Correct the tax breakup in your GSTR-1.",
+        "wa":      "Tax Error - Please correct IGST/CGST/SGST breakup in GSTR-1",
+        "notice":  "TAX ERROR: Tax breakup doesn't match. IGST/CGST/SGST correction required.",
+        "action":  "Correct tax breakup (IGST/CGST/SGST) in GSTR-1",
+    },
+    "Suggestion": {
+        "short":   "POSSIBLE MATCH",
+        "email":   "A possible match was identified but requires manual verification.\n   Action: Please confirm if this invoice matches and amend if required.",
+        "wa":      "Possible Match - Please verify and confirm",
+        "notice":  "POSSIBLE MATCH: System identified a potential match. Manual verification needed.",
+        "action":  "Verify and confirm or amend",
+    },
+    "Suggestion (Group Match)": {
+        "short":   "GROUP MATCH",
+        "email":   "A group of invoices may collectively match a consolidated entry.\n   Action: Please verify these entries and amend accordingly.",
+        "wa":      "Group Match Suggestion - Please verify these invoices",
+        "notice":  "GROUP MATCH: Multiple invoices may match a consolidated entry. Verify and amend.",
+        "action":  "Verify group entries and amend",
+    },
+    "Manually Linked": {
+        "short":   "MANUALLY LINKED",
+        "email":   "Invoice was manually linked during reconciliation. Values should be verified.\n   Action: Confirm values match your GSTR-1 and amend if discrepancy found.",
+        "wa":      "Manually Linked - Please verify amounts match your GSTR-1",
+        "notice":  "MANUAL LINK: Invoice was manually matched. Verify values match your filing.",
+        "action":  "Verify and amend if discrepancy found",
+    },
+    "DEFAULT": {
+        "short":   "DISCREPANCY",
+        "email":   "A discrepancy has been identified. Action required.\n   Action: Please review and rectify at the earliest.",
+        "wa":      "Discrepancy found - Please review",
+        "notice":  "DISCREPANCY: Please review and take corrective action.",
+        "action":  "Review and rectify",
+    },
+}
+
+def _get_msg(status, key):
+    for k in STATUS_MSG:
+        if k != "DEFAULT" and k in str(status):
+            return STATUS_MSG[k][key]
+    return STATUS_MSG["DEFAULT"][key]
+
+def get_vendors_with_issues(df):
+    issue_mask = df['Recon_Status'].str.contains(ISSUE_MASK, na=False)
+    vendors = df[issue_mask]['Name of Party'].unique().tolist()
+    return sorted([v for v in vendors if v and str(v) != 'nan'])
+
+def fc(val):
     if pd.isna(val) or val == '': return "0.00"
     try: return f"{float(val):,.2f}"
     except: return "0.00"
 
-def get_date_str(val):
-    """Format Date: Returns string dd-mm-yyyy"""
+def fd(val):
     try: return pd.to_datetime(val).strftime('%d-%m-%Y')
-    except: return str(val) if pd.notna(val) else "N/A"
+    except:
+        s = str(val) if pd.notna(val) else ''
+        return s.split(' ')[0] if s and s != 'nan' else 'N/A'
+
+def _get_row_data(row):
+    inv_b  = str(row.get('Invoice Number_BOOKS','')) if pd.notna(row.get('Invoice Number_BOOKS')) else ''
+    inv_g  = str(row.get('Invoice Number_GST',''))   if pd.notna(row.get('Invoice Number_GST'))   else ''
+    date_b = fd(row.get('Invoice Date_BOOKS',''))
+    date_g = fd(row.get('Invoice Date_GST',''))
+    d_inv  = inv_g if inv_g and inv_g != 'nan' else inv_b
+    d_date = date_g if date_g and date_g != 'N/A' else date_b
+    tb = float(row.get('Taxable Value_BOOKS', 0) or 0)
+    ib = float(row.get('IGST_BOOKS', 0) or 0)
+    cb = float(row.get('CGST_BOOKS', 0) or 0)
+    sb = float(row.get('SGST_BOOKS', 0) or 0)
+    tg = float(row.get('Taxable Value_GST', 0) or 0)
+    ig = float(row.get('IGST_GST', 0) or 0)
+    cg = float(row.get('CGST_GST', 0) or 0)
+    sg = float(row.get('SGST_GST', 0) or 0)
+    return dict(inv=d_inv, date=d_date, tb=tb, ib=ib, cb=cb, sb=sb,
+                tg=tg, ig=ig, cg=cg, sg=sg,
+                tot_b=tb+ib+cb+sb, tot_g=tg+ig+cg+sg)
+
 
 def generate_email_draft(df, vendor_name, company_name):
-    """
-    Generates a professional, table-like email without emojis.
-    """
     vendor_df = df[
-        (df['Name of Party'] == vendor_name) & 
-        (df['Recon_Status'].str.contains('Not in|Mismatch', na=False))
+        (df['Name of Party'] == vendor_name) &
+        df['Recon_Status'].str.contains(ISSUE_MASK, na=False)
     ].copy()
-    
-    if vendor_df.empty: return "No discrepancies found.", "No email needed."
 
-    subject = f"Immediate Attention Required: GST Reconciliation Discrepancy Notice - {vendor_name}"
+    if vendor_df.empty:
+        return "No discrepancies found.", "No email needed."
 
-    body = f"""Dear Finance Team,
+    # Group by status
+    groups = {}
+    for _, row in vendor_df.iterrows():
+        st = row.get('Recon_Status','DEFAULT')
+        groups.setdefault(st, []).append(row)
 
-We are writing to bring to your attention certain discrepancies observed during our routine GST reconciliation process between our Purchase Records and your GSTR-1 filings for {company_name}.
+    subject = f"Urgent: GST Reconciliation Discrepancy Notice — {vendor_name}"
 
-To ensure seamless Input Tax Credit (ITC) flow and maintain statutory compliance, we kindly request you to review the following invoice-wise details and take the necessary corrective actions:
+    body  = f"Dear Finance Team ({vendor_name}),\n\n"
+    body += f"We have completed reconciliation of our Purchase Register for {company_name} "
+    body += f"with GSTR-2B data. We have identified {sum(len(v) for v in groups.values())} invoice(s) "
+    body += f"with discrepancies across {len(groups)} issue type(s). Details below:\n\n"
 
-"""
-    for idx, row in vendor_df.iterrows():
-        status = row.get('Recon_Status', '')
-        
-        # Books Data
-        inv_b = row.get('Invoice Number_BOOKS', '')
-        date_b = get_date_str(row.get('Invoice Date_BOOKS', ''))
-        tb = row.get('Taxable Value_BOOKS', 0)
-        ib = row.get('IGST_BOOKS', 0)
-        cb = row.get('CGST_BOOKS', 0)
-        sb = row.get('SGST_BOOKS', 0)
-        tot_b = tb + ib + cb + sb
+    for status, rows in groups.items():
+        short = _get_msg(status, "short")
+        body += f"{'='*60}\n"
+        body += f"ISSUE TYPE: {short} ({len(rows)} invoice(s))\n"
+        body += f"{'='*60}\n"
 
-        # GST Data
-        inv_g = row.get('Invoice Number_GST', '')
-        date_g = get_date_str(row.get('Invoice Date_GST', ''))
-        tg = row.get('Taxable Value_GST', 0)
-        ig = row.get('IGST_GST', 0)
-        cg = row.get('CGST_GST', 0)
-        sg = row.get('SGST_GST', 0)
-        tot_g = tg + ig + cg + sg
+        for row in rows:
+            d = _get_row_data(row)
+            body += f"\n  Invoice: {d['inv']}  |  Date: {d['date']}\n"
+            body += f"  {_get_msg(status, 'email')}\n"
 
-        # Determine Display Invoice/Date
-        d_inv = inv_g if inv_g and str(inv_g) != 'nan' else inv_b
-        d_date = date_g if date_g and str(date_g) != 'nan' else date_b
-
-        body += "----------------------------------------------------------------------\n"
-        body += f"INVOICE: {d_inv}  |  DATE: {d_date}\n"
-        body += "----------------------------------------------------------------------\n"
-
-        if "Not in GSTR-2B" in status:
-            body += "ISSUE: RECORD NOT REFLECTING IN GSTR-2B\n"
-            body += "The following invoice is currently missing from the GST portal. Please ensure this is uploaded:\n"
-            body += f"   Taxable Value : {fc(tb)}\n"
-            body += f"   Tax Amount    : IGST: {fc(ib)} | CGST: {fc(cb)} | SGST: {fc(sb)}\n"
-            body += f"   Total Invoice : {fc(tot_b)}\n"
-            
-        elif "Not in Purchase Books" in status:
-            body += "ISSUE: UNRECONCILED ENTRY IN GST PORTAL\n"
-            body += "The following entry appears in the GST portal but is not recorded in our purchase books. Kindly verify the validity:\n"
-            body += f"   Taxable Value : {fc(tg)}\n"
-            body += f"   Total Invoice : {fc(tot_g)}\n"
-
-        else: # Mismatch
-            body += "ISSUE: DATA MISMATCH\n"
-            body += "A discrepancy has been noted between your filing and our records.\n"
-            body += f"   [As per your filing] Taxable: {fc(tg)} | Total: {fc(tot_g)}\n"
-            body += f"   [As per our records] Taxable: {fc(tb)} | Total: {fc(tot_b)}\n"
-            body += "   ACTION: Please amend the filing to match our records.\n"
-        
+            if 'Not in Purchase Books' in status:
+                body += f"  [Portal]  Taxable: {fc(d['tg'])} | IGST: {fc(d['ig'])} | CGST: {fc(d['cg'])} | SGST: {fc(d['sg'])} | Total: {fc(d['tot_g'])}\n"
+            elif 'Not in GSTR-2B' in status:
+                body += f"  [Books]   Taxable: {fc(d['tb'])} | IGST: {fc(d['ib'])} | CGST: {fc(d['cb'])} | SGST: {fc(d['sb'])} | Total: {fc(d['tot_b'])}\n"
+            else:
+                body += f"  [Books]   Taxable: {fc(d['tb'])} | IGST: {fc(d['ib'])} | CGST: {fc(d['cb'])} | SGST: {fc(d['sb'])} | Total: {fc(d['tot_b'])}\n"
+                body += f"  [Portal]  Taxable: {fc(d['tg'])} | IGST: {fc(d['ig'])} | CGST: {fc(d['cg'])} | SGST: {fc(d['sg'])} | Total: {fc(d['tot_g'])}\n"
+                diff = d['tot_b'] - d['tot_g']
+                if abs(diff) > 0.01:
+                    body += f"  Difference: {fc(abs(diff))}\n"
         body += "\n"
 
-    body += f"Kindly confirm once the rectification or amendment has been processed.\n\nRegards,\nAccounts Department\n{company_name}"
+    body += f"Kindly confirm once all rectifications / amendments have been processed.\n\n"
+    body += f"Regards,\nAccounts & Finance Department\n{company_name}"
     return subject, body
 
+
 def generate_whatsapp_message(df, vendor_name, company_name):
-    """
-    Generates a short, crisp WhatsApp message with minimal emojis.
-    """
     vendor_df = df[
-        (df['Name of Party'] == vendor_name) & 
-        (df['Recon_Status'].str.contains('Not in|Mismatch', na=False))
+        (df['Name of Party'] == vendor_name) &
+        df['Recon_Status'].str.contains(ISSUE_MASK, na=False)
     ].copy()
-    
-    if vendor_df.empty: return ""
 
-    msg = f"*GST Compliance Notification*\n"
+    if vendor_df.empty:
+        return ""
+
+    groups = {}
+    for _, row in vendor_df.iterrows():
+        st = row.get('Recon_Status','DEFAULT')
+        groups.setdefault(st, []).append(row)
+
+    total_inv = sum(len(v) for v in groups.values())
+
+    msg  = f"*GST Reconciliation Notice*\n"
     msg += f"Dear Team {vendor_name},\n\n"
-    msg += f"During our reconciliation for *{company_name}*, we noted discrepancies in GSTR-1 filings:\n"
-    msg += "━━━━━━━━━━━━━━━━━━\n"
+    msg += f"Reconciliation for *{company_name}* identified *{total_inv} invoice(s)* needing attention:\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━\n"
 
-    for idx, row in vendor_df.iterrows():
-        status = row.get('Recon_Status', '')
-        
-        # Books Totals
-        tb = row.get('Taxable Value_BOOKS', 0)
-        tot_b = tb + row.get('IGST_BOOKS', 0) + row.get('CGST_BOOKS', 0) + row.get('SGST_BOOKS', 0)
-
-        # GST Totals
-        tg = row.get('Taxable Value_GST', 0)
-        tot_g = tg + row.get('IGST_GST', 0) + row.get('CGST_GST', 0) + row.get('SGST_GST', 0)
-
-        # Identifiers
-        inv_b, inv_g = row.get('Invoice Number_BOOKS', ''), row.get('Invoice Number_GST', '')
-        date_b, date_g = get_date_str(row.get('Invoice Date_BOOKS', '')), get_date_str(row.get('Invoice Date_GST', ''))
-        d_inv = inv_g if inv_g and str(inv_g) != 'nan' else inv_b
-        d_date = date_g if date_g and str(date_g) != 'nan' else date_b
-
-        msg += f"*📄 Inv: {d_inv} | {d_date}*\n"
-        
-        if "Not in GSTR-2B" in status:
-            msg += f"⚠️ Issue: Missing in Portal\n"
-            msg += f"✅ Required: Please upload (Taxable: {fc(tb)} | Total: {fc(tot_b)})\n"
-            
-        elif "Not in Purchase Books" in status:
-            msg += f"⚠️ Issue: Unreconciled in Books\n"
-            msg += f"✅ Required: Verify validity (Portal Total: {fc(tot_g)})\n"
-
-        else: # Mismatch
-            msg += f"⚠️ Issue: Portal Mismatch\n"
-            msg += f"✅ Required: Amend to match Total {fc(tot_b)} (Current: {fc(tot_g)})\n"
-        
-        msg += "━━━━━━━━━━━━━━━━━━\n"
+    for status, rows in groups.items():
+        short = _get_msg(status, "short")
+        msg += f"\n*[{short}]* ({len(rows)} inv.)\n"
+        for row in rows:
+            d = _get_row_data(row)
+            msg += f"  Inv: *{d['inv']}* | {d['date']}\n"
+            msg += f"  {_get_msg(status, 'wa')}\n"
+            if 'Not in GSTR-2B' in status:
+                msg += f"  Amount: Taxable {fc(d['tb'])} | Total {fc(d['tot_b'])}\n"
+            elif 'Not in Purchase Books' in status:
+                msg += f"  Amount: Taxable {fc(d['tg'])} | Total {fc(d['tot_g'])}\n"
+            else:
+                diff = d['tot_b'] - d['tot_g']
+                msg += f"  Books: {fc(d['tot_b'])} | Portal: {fc(d['tot_g'])} | Diff: {fc(abs(diff))}\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━\n"
 
     msg += "\nKindly review and confirm rectification date. Thanks."
     return msg
 
+
 def generate_notice_content(df, vendor_name, company_name):
-    """
-    Generates a formal text block suitable for pasting onto a Letterhead/PDF.
-    """
+    """Plain-text formal notice for letterhead use"""
     vendor_df = df[
-        (df['Name of Party'] == vendor_name) & 
-        (df['Recon_Status'].str.contains('Not in|Mismatch', na=False))
+        (df['Name of Party'] == vendor_name) &
+        df['Recon_Status'].str.contains(ISSUE_MASK, na=False)
     ].copy()
-    
-    if vendor_df.empty: return "No discrepancies found."
 
-    notice = "RECONCILIATION NOTICE: DISCREPANCIES IN GST FILINGS\n"
-    notice += "====================================================\n\n"
-    notice += f"To: {vendor_name}\n"
-    notice += f"From: {company_name}\n"
-    notice += "Subject: Notification regarding GSTR-2B vs. Purchase Books Mismatch\n\n"
+    if vendor_df.empty:
+        return "No discrepancies found."
 
-    notice += "This is a formal communication regarding the statutory reconciliation of Goods and Services Tax (GST) data. "
-    notice += "Upon comparing our internal Purchase Register with the data auto-populated in our GSTR-2B, "
-    notice += "we have identified certain inconsistencies pertaining to supplies provided by your organization.\n\n"
-    
-    notice += "We highlight the following cases for your immediate verification and rectification:\n\n"
+    groups = {}
+    for _, row in vendor_df.iterrows():
+        st = row.get('Recon_Status','DEFAULT')
+        groups.setdefault(st, []).append(row)
 
-    for idx, row in vendor_df.iterrows():
-        status = row.get('Recon_Status', '')
-        
-        # Books Data
-        inv_b = row.get('Invoice Number_BOOKS', '')
-        date_b = get_date_str(row.get('Invoice Date_BOOKS', ''))
-        tot_b = row.get('Taxable Value_BOOKS', 0) + row.get('IGST_BOOKS', 0) + row.get('CGST_BOOKS', 0) + row.get('SGST_BOOKS', 0)
+    total_inv = sum(len(v) for v in groups.values())
+    notice  = f"GST RECONCILIATION NOTICE\n{'='*50}\n\n"
+    notice += f"To:      {vendor_name}\nFrom:    {company_name}\n"
+    notice += f"Subject: GSTR-2B vs Purchase Books Discrepancy — {total_inv} Invoice(s)\n\n"
+    notice += "This is a formal notice regarding discrepancies identified during GST reconciliation.\n\n"
 
-        # GST Data
-        inv_g = row.get('Invoice Number_GST', '')
-        tot_g = row.get('Taxable Value_GST', 0) + row.get('IGST_GST', 0) + row.get('CGST_GST', 0) + row.get('SGST_GST', 0)
+    for status, rows in groups.items():
+        short = _get_msg(status, "short")
+        notice += f"--- {short} ({len(rows)} invoice(s)) ---\n"
+        for row in rows:
+            d = _get_row_data(row)
+            notice += f"  Invoice: {d['inv']} | Date: {d['date']}\n"
+            notice += f"  {_get_msg(status, 'notice')}\n"
+            notice += f"  Action Required: {_get_msg(status, 'action')}\n\n"
 
-        d_inv = inv_g if inv_g and str(inv_g) != 'nan' else inv_b
-        d_date = date_g if (date_g := get_date_str(row.get('Invoice Date_GST', ''))) != 'N/A' else date_b
-
-        notice += f"--- Invoice No: {d_inv} (Dated: {d_date}) ---\n"
-
-        if "Not in GSTR-2B" in status:
-            notice += f"Category: MISSING INVOICE\n"
-            notice += f"Details: Invoice recorded in our books (Total: {fc(tot_b)}) is not reflecting in GSTR-2B.\n"
-            notice += "Action: Kindly upload in GSTR-1 immediately.\n"
-            
-        elif "Not in Purchase Books" in status:
-            notice += f"Category: UNIDENTIFIED RECORD\n"
-            notice += f"Details: Invoice reflecting in GSTR-2B (Total: {fc(tot_g)}) is not found in our Purchase Register.\n"
-            notice += "Action: Please provide proof of delivery or issue credit note if uploaded in error.\n"
-
-        else: # Mismatch
-            notice += f"Category: DATA MISMATCH\n"
-            notice += f"Details: Portal value ({fc(tot_g)}) does not match our Books value ({fc(tot_b)}).\n"
-            notice += "Action: Please amend the taxable/tax amounts to match our records.\n"
-        
-        notice += "\n"
-
-    notice += "We request you to treat this matter with priority. Kindly reconcile these entries and carry out "
-    notice += "the necessary amendments in your upcoming GSTR-1 filing.\n\n"
-    notice += f"For {company_name}\n\n"
-    notice += "(Authorized Signatory)\n"
-    notice += "Accounts & Finance Department"
-
+    notice += "Kindly process all corrections and confirm in writing.\n\n"
+    notice += f"For {company_name}\n(Authorized Signatory)\nAccounts & Finance Department"
     return notice
