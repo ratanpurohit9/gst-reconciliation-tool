@@ -116,12 +116,37 @@ def get_status_config(status):
             return STATUS_CONFIG[key]
     return STATUS_CONFIG["DEFAULT"]
 
-def fc(val):
-    if val is None or (isinstance(val, float) and pd.isna(val)) or val == '':
+def fc(val, show_zero=False, abs_val=False):
+    """Format currency with Indian number system and rupee symbol"""
+    if val is None or val == '':
         return "-"
     try:
+        if isinstance(val, float) and pd.isna(val):
+            return "-"
         f = float(val)
-        return f"Rs.{f:,.2f}" if f != 0 else "-"
+        if abs_val:
+            f = abs(f)
+        if f == 0 and not show_zero:
+            return "-"
+        # Indian number format: 1,00,000.00
+        neg = f < 0
+        f = abs(f)
+        s = f"{f:,.2f}"
+        parts = s.split('.')
+        n = parts[0].replace(',', '')
+        if len(n) > 3:
+            last3 = n[-3:]
+            rest = n[:-3]
+            grps = []
+            while len(rest) > 2:
+                grps.append(rest[-2:])
+                rest = rest[:-2]
+            if rest:
+                grps.append(rest)
+            grps.reverse()
+            n = ','.join(grps) + ',' + last3
+        result = f"\u20b9{n}.{parts[1]}"
+        return f"-{result}" if neg else result
     except:
         return "-"
 
@@ -190,27 +215,65 @@ def _to_box(vendor_name, vendor_gstin, W):
 
 def _summary_box(inv_count, tot_tax, tot_igst, tot_cgst, tot_sgst, status_counts, W):
     total_tax = tot_igst + tot_cgst + tot_sgst
-    statuses_txt = " | ".join(f"{v} {k.replace('Invoices ','').replace('AI Matched ','')}" for k,v in list(status_counts.items())[:3])
 
-    def cell(lbl, val, vc=DARK_NAVY):
-        return [[Paragraph(lbl, S("lbl_stat"))], [Paragraph(val, ParagraphStyle("sv",fontName="Helvetica-Bold",fontSize=10,textColor=vc))]]
+    # Row 1: 3 stat cells
+    def stat_cell(lbl, val, vc=DARK_NAVY, cw=0):
+        t = Table([[Paragraph(lbl, S("lbl_stat"))],[Paragraph(val, ParagraphStyle("sv",fontName="Helvetica-Bold",fontSize=11,textColor=vc))]],
+                  colWidths=[cw or (W/3 - 8)])
+        t.setStyle(TableStyle([('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4),
+                                ('LEFTPADDING',(0,0),(-1,-1),6),('RIGHTPADDING',(0,0),(-1,-1),6)]))
+        return t
 
-    cw = W / 4
-    c1 = Table(cell("Total Invoices",str(inv_count),MID_BLUE), colWidths=[cw-4])
-    c2 = Table(cell("Total Taxable", fc(tot_tax)), colWidths=[cw-4])
-    c3 = Table(cell("Total Tax (IGST+CGST+SGST)", fc(total_tax), ACCENT_RED), colWidths=[cw-4])
-    c4 = Table(cell("Issue Breakdown", statuses_txt), colWidths=[cw-4])
-    for c in [c1,c2,c3,c4]:
-        c.setStyle(TableStyle([('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),3),
-                                ('LEFTPADDING',(0,0),(-1,-1),4),('RIGHTPADDING',(0,0),(-1,-1),4)]))
+    cw3 = W / 3
+    row1 = [[stat_cell("Total Invoices", str(inv_count), MID_BLUE, cw3-8),
+              stat_cell("Total Taxable Value", fc(tot_tax, show_zero=True), DARK_NAVY, cw3-8),
+              stat_cell("Total Tax (IGST+CGST+SGST)", fc(total_tax, show_zero=True), ACCENT_RED, cw3-8)]]
 
-    t = Table([[c1,c2,c3,c4]], colWidths=[cw]*4)
-    t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),BG_GRAY),('BOX',(0,0),(-1,-1),0.8,MID_BLUE),
-                             ('LINEAFTER',(0,0),(2,0),0.5,colors.HexColor("#CCCCCC")),
-                             ('TOPPADDING',(0,0),(-1,-1),8),('BOTTOMPADDING',(0,0),(-1,-1),8),
-                             ('LEFTPADDING',(0,0),(-1,-1),8),('RIGHTPADDING',(0,0),(-1,-1),8),
-                             ('VALIGN',(0,0),(-1,-1),'MIDDLE')]))
-    return t
+    t1 = Table(row1, colWidths=[cw3]*3)
+    t1.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),BG_GRAY),
+                              ('LINEAFTER',(0,0),(1,0),0.5,colors.HexColor("#CCCCCC")),
+                              ('TOPPADDING',(0,0),(-1,-1),8),('BOTTOMPADDING',(0,0),(-1,-1),8),
+                              ('LEFTPADDING',(0,0),(-1,-1),0),('RIGHTPADDING',(0,0),(-1,-1),0),
+                              ('VALIGN',(0,0),(-1,-1),'MIDDLE')]))
+
+    # Row 2: Issue breakdown chips
+    STATUS_LABELS = {
+        "Invoices Not in GSTR-2B":        ("NOT IN 2B",    ACCENT_RED),
+        "Invoices Not in Purchase Books":  ("NOT IN BOOKS", ACCENT_GOLD),
+        "AI Matched (Mismatch)":           ("VALUE MISMATCH", ACCENT_RED),
+        "AI Matched (Date Mismatch)":      ("DATE MISMATCH",  MID_BLUE),
+        "AI Matched (Invoice Mismatch)":   ("INV NO. MISMATCH",MID_BLUE),
+        "Matched (Tax Error)":             ("TAX ERROR",    ACCENT_GOLD),
+        "Suggestion":                      ("SUGGESTION",   MID_BLUE),
+        "Suggestion (Group Match)":        ("GROUP MATCH",  MID_BLUE),
+        "Manually Linked":                 ("MANUAL LINK",  ACCENT_GRN),
+    }
+    chips = []
+    for st, cnt in status_counts.items():
+        lbl, clr = STATUS_LABELS.get(st, (st[:12].upper(), MID_BLUE))
+        chip_t = Table([[Paragraph(f"{cnt}x {lbl}",
+                          ParagraphStyle("chip",fontName="Helvetica-Bold",fontSize=7.5,textColor=WHITE,alignment=TA_CENTER))]],
+                        colWidths=[max(60, len(lbl)*5.5 + 20)])
+        chip_t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),clr),
+                                     ('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4),
+                                     ('LEFTPADDING',(0,0),(-1,-1),6),('RIGHTPADDING',(0,0),(-1,-1),6),
+                                     ('ROUNDEDCORNERS',[4,4,4,4])]))
+        chips.append(chip_t)
+    # Pad to fill row
+    chip_row = chips + [Paragraph("",S("small"))] * max(0, 6-len(chips))
+    chip_data = [chip_row[:6]]
+    t2 = Table(chip_data, colWidths=[W/6]*6)
+    t2.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),WHITE),
+                              ('TOPPADDING',(0,0),(-1,-1),6),('BOTTOMPADDING',(0,0),(-1,-1),6),
+                              ('LEFTPADDING',(0,0),(-1,-1),6),('RIGHTPADDING',(0,0),(-1,-1),6),
+                              ('VALIGN',(0,0),(-1,-1),'MIDDLE')]))
+
+    outer = Table([[t1],[t2]], colWidths=[W])
+    outer.setStyle(TableStyle([('BOX',(0,0),(-1,-1),0.8,MID_BLUE),
+                                ('LINEBELOW',(0,0),(-1,0),0.5,colors.HexColor("#CCCCCC")),
+                                ('LEFTPADDING',(0,0),(-1,-1),0),('RIGHTPADDING',(0,0),(-1,-1),0),
+                                ('TOPPADDING',(0,0),(-1,-1),0),('BOTTOMPADDING',(0,0),(-1,-1),0)]))
+    return outer
 
 
 def _invoice_table(rows_data, status, W):
@@ -243,13 +306,26 @@ def _invoice_table(rows_data, status, W):
         btax=ib+cb+sb; gtax=ig+cg+sg; diff=(tb+btax)-(tg+gtax)
 
         if has_both:
-            diff_style = ParagraphStyle("df",fontName="Helvetica-Bold",fontSize=8,
-                                         textColor=ACCENT_RED if abs(diff)>0.5 else ACCENT_GRN,alignment=TA_RIGHT)
+            if tb == 0 and tg > 0:
+                # Not in Books: show portal total, diff = "EXTRA"
+                diff_txt  = "EXTRA"
+                diff_clr  = ACCENT_GOLD
+            elif tg == 0 and tb > 0:
+                # Not in 2B: show "-" for diff
+                diff_txt  = "-"
+                diff_clr  = ACCENT_RED
+            elif abs(diff) < 0.5:
+                diff_txt  = "-"
+                diff_clr  = ACCENT_GRN
+            else:
+                diff_txt  = fc(diff, abs_val=True)
+                diff_clr  = ACCENT_RED
+            diff_style = ParagraphStyle("df",fontName="Helvetica-Bold",fontSize=8,textColor=diff_clr,alignment=TA_RIGHT)
             row=[Paragraph(str(i+1),S("tbl_cell")), Paragraph(str(r.get('inv_no','—')),S("tbl_cell")),
                  Paragraph(str(r.get('date','—')),S("tbl_cell")),
-                 Paragraph(fc(tb),S("tbl_num")), Paragraph(fc(btax),S("tbl_num")),
+                 Paragraph(fc(tb) if tb else "-",S("tbl_num")), Paragraph(fc(btax) if btax else "-",S("tbl_num")),
                  Paragraph(fc(tg) if tg else "-",S("tbl_num")), Paragraph(fc(gtax) if gtax else "-",S("tbl_num")),
-                 Paragraph(fc(diff),diff_style)]
+                 Paragraph(diff_txt, diff_style)]
         else:
             row=[Paragraph(str(i+1),S("tbl_cell")), Paragraph(str(r.get('inv_no','—')),S("tbl_cell")),
                  Paragraph(str(r.get('date','—')),S("tbl_cell")),
