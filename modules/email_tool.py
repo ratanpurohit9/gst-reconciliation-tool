@@ -93,6 +93,22 @@ def fc(val):
     try: return f"{float(val):,.2f}"
     except: return "0.00"
 
+def fi(val):
+    """Format Indian rupee for WhatsApp (no unicode issues, uses Rs.)"""
+    if pd.isna(val) or val == '' or val is None: return "0.00"
+    try:
+        f = abs(float(val))
+        if f == 0: return "0.00"
+        s = f"{f:,.2f}".split('.')
+        n = s[0].replace(',','')
+        if len(n) > 3:
+            last3 = n[-3:]; rest = n[:-3]; grps = []
+            while len(rest) > 2: grps.append(rest[-2:]); rest = rest[:-2]
+            if rest: grps.append(rest)
+            grps.reverse(); n = ','.join(grps) + ',' + last3
+        return f"Rs.{n}.{s[1]}"
+    except: return "0.00"
+
 def fd(val):
     try: return pd.to_datetime(val).strftime('%d-%m-%Y')
     except:
@@ -198,12 +214,12 @@ def generate_whatsapp_message(df, vendor_name, company_name):
             msg += f"  Inv: *{d['inv']}* | {d['date']}\n"
             msg += f"  {_get_msg(status, 'wa')}\n"
             if 'Not in GSTR-2B' in status:
-                msg += f"  Amount: Taxable {fc(d['tb'])} | Total {fc(d['tot_b'])}\n"
+                msg += f"  Taxable: *{fi(d['tb'])}* | Total: *{fi(d['tot_b'])}*\n"
             elif 'Not in Purchase Books' in status:
-                msg += f"  Amount: Taxable {fc(d['tg'])} | Total {fc(d['tot_g'])}\n"
+                msg += f"  Portal Taxable: *{fi(d['tg'])}* | Total: *{fi(d['tot_g'])}*\n"
             else:
                 diff = d['tot_b'] - d['tot_g']
-                msg += f"  Books: {fc(d['tot_b'])} | Portal: {fc(d['tot_g'])} | Diff: {fc(abs(diff))}\n"
+                msg += f"  Books: {fi(d['tot_b'])} | Portal: {fi(d['tot_g'])} | *Diff: {fi(abs(diff))}*\n"
         msg += "━━━━━━━━━━━━━━━━━━━━━\n"
 
     msg += "\nKindly review and confirm rectification date. Thanks."
