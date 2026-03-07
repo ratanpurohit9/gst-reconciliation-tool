@@ -1,126 +1,8 @@
 # app.py — GST Reconciliation Tool Enterprise v4.0
 # ══════════════════════════════════════════════════════
-# CLOUD LOGIN GATE — Each client has their own unique key
-# ══════════════════════════════════════════════════════
-import streamlit as _st
-import platform as _platform
-import hashlib as _hashlib
-
-def _cloud_login_gate():
-    """
-    On cloud (Linux): Each client must enter their unique activation key.
-
-    HOW PERSISTENCE WORKS:
-    - After login, the key hash is saved in the URL as ?auth=HASH
-    - On every refresh, URL params are read automatically — no re-login needed
-    - Client bookmarks the URL with ?auth=HASH → never asked again
-    - If you revoke a key (remove hash from key_hashes.py), that URL stops
-      working within 2 minutes — client is blocked even with saved bookmark
-
-    On local EXE (Windows): This gate is completely skipped.
-    """
-    if _platform.system() != "Linux":
-        return  # Local EXE — skip entirely
-
-    from modules.key_hashes import VALID_KEY_HASHES
-
-    # ── Check URL params first (survives refresh & bookmark) ─────────────────
-    _params = _st.query_params
-    _auth_from_url = _params.get("auth", "")
-
-    if _auth_from_url and _auth_from_url in VALID_KEY_HASHES:
-        # Valid hash in URL → let through, sync to session
-        _st.session_state["cloud_authenticated"] = True
-        _st.session_state["cloud_key_hash"] = _auth_from_url
-        return  # ✅ Authenticated via URL — no login screen shown
-
-    # ── Check session state (survives rerun within same tab) ──────────────────
-    if _st.session_state.get("cloud_authenticated"):
-        return
-
-    # ── Neither URL nor session valid → Show Login Screen ────────────────────
-    _st.set_page_config(
-        page_title="GST Tool — Login",
-        page_icon="🔐",
-        layout="centered"
-    )
-
-    _st.markdown("""
-    <style>
-    .stApp {
-        background: linear-gradient(135deg, #0f2044 0%, #1a3a6e 50%, #0f52ba 100%);
-    }
-    .login-wrap {
-        max-width: 460px;
-        margin: 60px auto 0 auto;
-    }
-    .login-card {
-        background: white;
-        border-radius: 24px;
-        padding: 44px 48px 36px 48px;
-        box-shadow: 0 24px 64px rgba(0,0,0,0.40);
-        text-align: center;
-    }
-    .login-title { color: #0f2044; font-size: 24px; font-weight: 700; margin: 12px 0 4px 0; }
-    .login-sub   { color: #777; font-size: 13px; margin-bottom: 28px; }
-    .login-foot  { color: #aaa; font-size: 11px; margin-top: 20px; }
-    </style>
-    """, unsafe_allow_html=True)
-
-    _st.markdown("""
-    <div class="login-wrap">
-      <div class="login-card">
-        <div style="font-size:54px">🔐</div>
-        <div class="login-title">GST Reconciliation Tool</div>
-        <div class="login-sub">Enterprise v4.0 &nbsp;|&nbsp; Enter your personal access key</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    _st.markdown("####")
-    _key_input = _st.text_input(
-        "Access Key",
-        placeholder="XXXX-XXXX-XXXX-XXXX",
-        max_chars=50,
-        label_visibility="visible"
-    )
-
-    c1, c2, c3 = _st.columns([1, 2, 1])
-    with c2:
-        _login_btn = _st.button("🔓 Access App", type="primary", use_container_width=True)
-
-    if _login_btn:
-        if not _key_input.strip():
-            _st.error("⚠️ Please enter your access key.")
-        else:
-            _entered_hash = _hashlib.sha256(
-                _key_input.strip().upper().encode()
-            ).hexdigest()
-
-            if _entered_hash in VALID_KEY_HASHES:
-                # ✅ Valid — save hash into URL so refresh never asks again
-                _st.session_state["cloud_authenticated"] = True
-                _st.session_state["cloud_key_hash"] = _entered_hash
-                _st.query_params["auth"] = _entered_hash  # ← persists in URL
-                _st.rerun()
-            else:
-                _st.error("❌ Invalid key. Please check and try again.")
-                _st.info("💡 Your key is personal — if you got this link from someone else, you need to purchase your own key.")
-
-    _st.markdown(
-        "<p class='login-foot' style='text-align:center'>"
-        "🔒 Your key is tied to your account. Sharing it may result in access being revoked."
-        "</p>",
-        unsafe_allow_html=True
-    )
-    _st.stop()
-
-# Run the gate FIRST before anything else
-_cloud_login_gate()
-
-# ══════════════════════════════════════════════════════
 # LICENSE GATE — runs before any app logic
 # ══════════════════════════════════════════════════════
+import streamlit as _st
 
 # We need page config first, so set it here early if not already set
 # (The real set_page_config is called again below — Streamlit ignores duplicates)
@@ -953,11 +835,7 @@ elif st.session_state.app_stage == 'results':
         with col_btn1:
             if st.button("📁 Folder"):
                 if st.session_state.current_client_path:
-                    import platform as _plat
-                    if _plat.system() == "Linux":
-                        st.info("📁 Files are saved in session memory on cloud. Use the download buttons above to save reports.")
-                    else:
-                        open_folder(st.session_state.current_client_path)
+                    open_folder(st.session_state.current_client_path)
         with col_btn2:
             if st.button("🔄 New"):
                 st.session_state.app_stage = 'setup'
@@ -1288,60 +1166,134 @@ elif st.session_state.app_stage == 'results':
                 else:
                     st.info("No changes detected.")
 
-        result       = st.session_state['last_result']
+        result        = st.session_state['last_result']
         issue_vendors = get_vendors_with_issues(result)
-        not_in_2b_vendors = result[result['Recon_Status'] == 'Invoices Not in GSTR-2B']['Name of Party'].unique().tolist()
-        not_in_2b_vendors = [v for v in not_in_2b_vendors if v and str(v) != 'nan']
+
+        # ── Status-wise vendor counts for smart filter ──────────────────────
+        STATUS_FILTER_OPTS = {
+            "All Issues":                  None,
+            "Not in GSTR-2B":              "Invoices Not in GSTR-2B",
+            "Not in Books":                "Invoices Not in Purchase Books",
+            "Value Mismatch":              "AI Matched (Mismatch)",
+            "Tax Error":                   "Matched (Tax Error)",
+            "Date Mismatch":               "AI Matched (Date Mismatch)",
+            "Invoice No. Mismatch":        "AI Matched (Invoice Mismatch)",
+            "Suggestions":                 "Suggestion",
+        }
 
         if issue_vendors:
-            st.markdown("### 📤 Bulk Actions (Auto-Saved on Download)")
-            col_sel1, _ = st.columns([3, 1])
-            with col_sel1:
-                select_2b_only = st.checkbox(f"Select Only 'Not in 2B' ({len(not_in_2b_vendors)} Vendors)", value=False)
-            default_selection     = [v for v in not_in_2b_vendors if v in issue_vendors] if select_2b_only else []
-            selected_vendors_bulk = st.multiselect("Select Vendors for Report Generation", issue_vendors, default=default_selection)
+            st.markdown("### 📤 Bulk Notice Generation")
+
+            # Status filter for vendor selection
+            _c1, _c2 = st.columns([2, 2])
+            with _c1:
+                bulk_status_filter = st.selectbox(
+                    "Filter vendors by issue type:",
+                    list(STATUS_FILTER_OPTS.keys()), index=0,
+                    key="bulk_status_filter"
+                )
+            selected_status_key = STATUS_FILTER_OPTS[bulk_status_filter]
+            if selected_status_key:
+                filtered_vendors = result[result['Recon_Status'].str.contains(
+                    selected_status_key.replace('(','\\(').replace(')','\\)'), na=False
+                )]['Name of Party'].unique().tolist()
+                filtered_vendors = [v for v in filtered_vendors if v and str(v) != 'nan']
+            else:
+                filtered_vendors = issue_vendors
+
+            with _c2:
+                st.metric("Vendors with this issue", len(filtered_vendors))
+
+            selected_vendors_bulk = st.multiselect(
+                f"Select vendors to generate notices ({len(filtered_vendors)} available):",
+                issue_vendors, default=filtered_vendors[:5] if len(filtered_vendors) <= 10 else [],
+                key="bulk_vendor_select"
+            )
 
             if selected_vendors_bulk:
+                # Show status breakdown for selected vendors
+                sel_df = result[result['Name of Party'].isin(selected_vendors_bulk)]
+                st_counts = sel_df[sel_df['Recon_Status'].str.contains(
+                    'Not in|Mismatch|Suggestion|Manual|Tax Error', na=False
+                )]['Recon_Status'].value_counts()
+                if not st_counts.empty:
+                    cols_st = st.columns(min(len(st_counts), 4))
+                    for i, (st_name, cnt) in enumerate(st_counts.items()):
+                        with cols_st[i % 4]:
+                            short = st_name.replace("Invoices ","").replace("AI Matched ","")
+                            st.metric(short, cnt)
+
                 c_pdf, c_xls = st.columns(2)
                 zip_buffer_pdf = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer_pdf, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
                     for v in selected_vendors_bulk:
                         pdf_data = create_vendor_pdf(result, v, name, gstin)
-                        zip_file.writestr(f"Notice_{v}.pdf", pdf_data.getvalue())
+                        zip_file.writestr(f"GST_Notice_{v}.pdf", pdf_data.getvalue())
                 filtered_df    = result[result['Name of Party'].isin(selected_vendors_bulk)]
                 zip_buffer_xls = generate_vendor_split_zip(filtered_df)
                 folder         = st.session_state.current_client_path
                 with c_pdf:
-                    st.download_button("📄 Download PDF Notices", data=zip_buffer_pdf.getvalue(),
-                                       file_name="Notices.zip", type="primary", use_container_width=True,
-                                       on_click=save_callback, args=(folder, "Notices.zip", zip_buffer_pdf.getvalue()))
+                    st.download_button("📄 Download PDF Notices (All Issues)", data=zip_buffer_pdf.getvalue(),
+                                       file_name="GST_Notices.zip", type="primary", use_container_width=True,
+                                       on_click=save_callback, args=(folder, "GST_Notices.zip", zip_buffer_pdf.getvalue()))
                 with c_xls:
                     st.download_button("📊 Download Excel Splits", data=zip_buffer_xls.getvalue(),
                                        file_name="Excels.zip", use_container_width=True,
                                        on_click=save_callback, args=(folder, "Excels.zip", zip_buffer_xls.getvalue()))
 
         st.divider()
-        st.markdown("### 📱 Quick Chat / Email")
-        c_vendor, c_mode = st.columns([2, 1])
-        with c_vendor: selected_vendor = st.selectbox("Select Single Vendor", issue_vendors)
-        with c_mode:   comm_mode       = st.radio("Mode", ["📧 Email", "📱 WhatsApp"], horizontal=True)
-        if selected_vendor:
-            if comm_mode == "📧 Email":
-                subject, body = generate_email_draft(result, selected_vendor, name)
-                st.text_input("Subject", value=subject)
-                st.markdown("**Email Body:** (Click top-right icon to copy)")
-                st.code(body, language='markdown')
-            else:
-                wa_body = generate_whatsapp_message(result, selected_vendor, name)
-                st.markdown("**WhatsApp Message:** (Click top-right icon to copy)")
-                st.code(wa_body, language='markdown')
-                col_ph, col_btn = st.columns([2, 1])
-                with col_ph: phone = st.text_input("Vendor Phone (91...)", value="91")
-                with col_btn:
-                    st.write(""); st.write("")
-                    if phone and len(phone) > 10:
-                        encoded_text = urllib.parse.quote(wa_body)
-                        st.link_button("🚀 Open in WhatsApp", f"https://wa.me/{phone}?text={encoded_text}")
+        st.markdown("### 📱 Send Notice — Email / WhatsApp")
+
+        if not issue_vendors:
+            st.info("No vendors with discrepancies found.")
+        else:
+            c_vendor, c_mode = st.columns([2, 1])
+            with c_vendor:
+                selected_vendor = st.selectbox("Select Vendor", issue_vendors, key="single_vendor_sel")
+            with c_mode:
+                comm_mode = st.radio("Mode", ["📧 Email", "📱 WhatsApp", "📄 Preview PDF"], horizontal=True)
+
+            if selected_vendor:
+                # Show this vendor's issue breakdown
+                v_df = result[(result['Name of Party'] == selected_vendor) &
+                               result['Recon_Status'].str.contains('Not in|Mismatch|Suggestion|Manual|Tax Error', na=False)]
+                v_counts = v_df['Recon_Status'].value_counts()
+                if not v_counts.empty:
+                    st.caption("Issues for this vendor: " + " | ".join(
+                        f"**{cnt}×** {st_n.replace('Invoices ','').replace('AI Matched ','')}"
+                        for st_n, cnt in v_counts.items()
+                    ))
+
+                if comm_mode == "📧 Email":
+                    subject, body_txt = generate_email_draft(result, selected_vendor, name)
+                    st.text_input("Subject", value=subject, key="email_subj")
+                    st.markdown("**Email Body:** (Click top-right icon to copy)")
+                    st.code(body_txt, language='markdown')
+
+                elif comm_mode == "📱 WhatsApp":
+                    wa_body = generate_whatsapp_message(result, selected_vendor, name)
+                    st.markdown("**WhatsApp Message:** (Click top-right icon to copy)")
+                    st.code(wa_body, language='markdown')
+                    col_ph, col_btn = st.columns([2, 1])
+                    with col_ph:
+                        phone = st.text_input("Vendor Phone (91...)", value="91", key="wa_phone")
+                    with col_btn:
+                        st.write(""); st.write("")
+                        if phone and len(phone) > 10:
+                            encoded_text = urllib.parse.quote(wa_body)
+                            st.link_button("🚀 Open in WhatsApp", f"https://wa.me/{phone}?text={encoded_text}")
+
+                elif comm_mode == "📄 Preview PDF":
+                    pdf_data = create_vendor_pdf(result, selected_vendor, name, gstin)
+                    st.download_button(
+                        f"⬇️ Download Notice PDF — {selected_vendor}",
+                        data=pdf_data.getvalue(),
+                        file_name=f"GST_Notice_{selected_vendor}.pdf",
+                        mime="application/pdf",
+                        type="primary",
+                        use_container_width=True,
+                        key="single_pdf_dl"
+                    )
 
     # ─────────────────────────────────────────────────────
     # TAB 2 — CDNR MATCHING
