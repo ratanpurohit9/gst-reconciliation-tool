@@ -993,14 +993,62 @@ elif st.session_state.app_stage == 'results':
         elif status_filter == "Not in Books":
             df_view = result_display[result_display['Recon_Status'] == "Invoices Not in Purchase Books"]
 
-        st.dataframe(
-            df_view, use_container_width=True,
-            column_config={
-                "Taxable Value_BOOKS": st.column_config.NumberColumn(format="₹ %.2f"),
-                "Taxable Value_GST":   st.column_config.NumberColumn(format="₹ %.2f"),
-                "Final_Taxable":       st.column_config.NumberColumn(format="₹ %.2f"),
-            }
+        # Status legend
+        st.markdown(
+            """<div style='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;'>
+            <span style='background:#FFF2F2;color:#C00000;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid #C00000'>🔴 Not in 2B</span>
+            <span style='background:#FFFBEA;color:#B8860B;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid #B8860B'>🟡 Not in Books</span>
+            <span style='background:#FFF0F0;color:#C00000;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid #C00000'>🔴 Value Mismatch</span>
+            <span style='background:#EBF3FB;color:#2E75B6;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid #2E75B6'>🔵 Date/Inv Mismatch</span>
+            <span style='background:#F0FFF4;color:#1E6B3C;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid #1E6B3C'>🟢 Matched</span>
+            </div>""", unsafe_allow_html=True
         )
+                # Status-based row coloring
+        STATUS_COLORS_DF = {
+            'Invoices Not in GSTR-2B':       'background-color:#FFF2F2; color:#C00000; font-weight:600',
+            'Invoices Not in Purchase Books': 'background-color:#FFFBEA; color:#B8860B; font-weight:600',
+            'AI Matched (Mismatch)':          'background-color:#FFF0F0; color:#C00000',
+            'Matched (Tax Error)':            'background-color:#FFFBEA; color:#B8860B',
+            'AI Matched (Date Mismatch)':     'background-color:#EBF3FB; color:#2E75B6',
+            'AI Matched (Invoice Mismatch)':  'background-color:#EBF3FB; color:#2E75B6',
+            'Matched':                        'background-color:#F0FFF4; color:#1E6B3C',
+            'Suggestion':                     'background-color:#EFF4FF; color:#2E75B6',
+            'Manually Linked':                'background-color:#F0FFF4; color:#1E6B3C',
+        }
+        def _color_rows(row):
+            st_val = str(row.get('Recon_Status', ''))
+            for key, style in STATUS_COLORS_DF.items():
+                if key in st_val:
+                    return [style] * len(row)
+            return [''] * len(row)
+
+        if 'Recon_Status' in df_view.columns and len(df_view) < 5000:
+            styled_df = df_view.style.apply(_color_rows, axis=1)
+            st.dataframe(
+                styled_df, use_container_width=True,
+                column_config={
+                    "Recon_Status":        st.column_config.TextColumn("Status", width="medium"),
+                    "Taxable Value_BOOKS": st.column_config.NumberColumn("Books Taxable", format="₹ %.2f"),
+                    "Taxable Value_GST":   st.column_config.NumberColumn("Portal Taxable", format="₹ %.2f"),
+                    "Final_Taxable":       st.column_config.NumberColumn("Final Taxable", format="₹ %.2f"),
+                    "IGST_BOOKS":          st.column_config.NumberColumn("IGST (Books)", format="₹ %.2f"),
+                    "CGST_BOOKS":          st.column_config.NumberColumn("CGST (Books)", format="₹ %.2f"),
+                    "SGST_BOOKS":          st.column_config.NumberColumn("SGST (Books)", format="₹ %.2f"),
+                    "IGST_GST":            st.column_config.NumberColumn("IGST (Portal)", format="₹ %.2f"),
+                    "CGST_GST":            st.column_config.NumberColumn("CGST (Portal)", format="₹ %.2f"),
+                    "SGST_GST":            st.column_config.NumberColumn("SGST (Portal)", format="₹ %.2f"),
+                }
+            )
+        else:
+            st.dataframe(
+                df_view, use_container_width=True,
+                column_config={
+                    "Recon_Status":        st.column_config.TextColumn("Status", width="medium"),
+                    "Taxable Value_BOOKS": st.column_config.NumberColumn("Books Taxable", format="₹ %.2f"),
+                    "Taxable Value_GST":   st.column_config.NumberColumn("Portal Taxable", format="₹ %.2f"),
+                    "Final_Taxable":       st.column_config.NumberColumn("Final Taxable", format="₹ %.2f"),
+                }
+            )
 
     # ─────────────────────────────────────────────────────
     # TAB 4 — SUPPLIER WISE
