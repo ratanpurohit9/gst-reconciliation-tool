@@ -40,9 +40,12 @@ BK_COL_SGST     = 14  # O  – State/UT Tax Paid
 # ────────────────────────────────────────────────────────────
 
 def _f(v):
-    """Safe abs-float conversion – always positive."""
+    """Safe abs-float conversion – always positive. NaN/None → 0.0."""
     try:
-        return abs(round(float(str(v).replace(',', '').strip()), 2))
+        if pd.isna(v):
+            return 0.0
+        result = abs(round(float(str(v).replace(',', '').strip()), 2))
+        return 0.0 if (result != result) else result  # second NaN guard
     except Exception:
         return 0.0
 
@@ -93,7 +96,7 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df['Date_Str'] = ''
 
-    df['Round_Taxable'] = df['Taxable Value'].apply(lambda v: int(round(v, 0)))
+    df['Round_Taxable'] = df['Taxable Value'].apply(lambda v: int(round(v, 0)) if pd.notna(v) and v == v else 0)
     df = df[df['GSTIN'].str.len() == 15].copy()
     df.reset_index(drop=True, inplace=True)
     return df

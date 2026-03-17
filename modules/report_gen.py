@@ -201,12 +201,19 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
     ws_exec.set_row(5,26)
     for ci,h in enumerate(COL_H): ws_exec.write(5,ci,h,FHDR)
 
+    cdnr_available = cdnr_df is not None and not (hasattr(cdnr_df,'empty') and cdnr_df.empty)
+    FNA = _f(bg_color='#F5F5F5',font_color='#BDBDBD',border=1,align='center',valign='vcenter',font_size=9,italic=True)
+
     # BOOKS
     ws_exec.set_row(6,22); ws_exec.merge_range(6,0,6,8,'  BOOKS  (Purchase Register)',FBK_T)
-    for row,l1,l2,vals in [(7,'Books','B2B',bk_b2b),(8,'','CDNR',bk_cdnr)]:
+    for row,l1,l2,vals,is_cdnr in [(7,'Books','B2B',bk_b2b,False),(8,'','CDNR',bk_cdnr,True)]:
         ws_exec.set_row(row,20)
         ws_exec.write(row,0,l1,FBK_L); ws_exec.write(row,1,l2,FBK_L)
-        for ci,v in enumerate(vals[1:],2): ws_exec.write(row,ci,v,FBK_V)
+        for ci,v in enumerate(vals[1:],2):
+            if is_cdnr and not cdnr_available:
+                ws_exec.write(row,ci,'—',FNA)
+            else:
+                ws_exec.write(row,ci,v,FBK_V)
     ws_exec.set_row(9,22)
     ws_exec.write(9,0,'TOTAL BOOKS',FBK_TL); ws_exec.write(9,1,'',FBK_TL)
     for ci,v in enumerate(bk_total[1:],2): ws_exec.write(9,ci,v,FBK_TV)
@@ -214,12 +221,20 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
     # GSTR-2B
     ws_exec.set_row(10,6); ws_exec.set_row(11,22)
     ws_exec.merge_range(11,0,11,8,'  GSTR-2B  (Portal Data)',FGT_T)
-    for row,l1,l2,vals,amend in [(12,'GSTR-2B','B2B',gst_b2b,False),(13,'','B2BA',b2ba_row,True),
-                                  (14,'','CDNR',gst_cdnr,False),(15,'','CDNRA',cdnra_row,True)]:
+    for row,l1,l2,vals,amend,is_cdnr in [
+            (12,'GSTR-2B','B2B', gst_b2b,  False, False),
+            (13,'',       'B2BA',b2ba_row, True,  False),
+            (14,'',       'CDNR',gst_cdnr, False, True),
+            (15,'',       'CDNRA',cdnra_row,True, False)]:
         ws_exec.set_row(row,20)
         ws_exec.write(row,0,l1,FGT_L); ws_exec.write(row,1,l2,FGT_L)
         for ci,v in enumerate(vals[1:],2):
-            ws_exec.write(row,ci,'—' if amend and v==0 else v, FGT_NA if amend and v==0 else FGT_V)
+            if is_cdnr and not cdnr_available:
+                ws_exec.write(row,ci,'—',FNA)
+            elif amend and v==0:
+                ws_exec.write(row,ci,'—',FGT_NA)
+            else:
+                ws_exec.write(row,ci,v,FGT_V)
     ws_exec.set_row(16,22)
     ws_exec.write(16,0,'TOTAL GSTR-2B',FGT_TL); ws_exec.write(16,1,'',FGT_TL)
     for ci,v in enumerate(gst_grand[1:],2): ws_exec.write(16,ci,v,FGT_TV)
@@ -239,168 +254,229 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
         '🔴 Red = GSTR-2B < Books (ITC may be at risk)   '
         '🟢 Green = GSTR-2B > Books (supplier reported more)   '
         '⬜ Yellow = No difference',FNOTE)
+    if not cdnr_available:
+        ws_exec.set_row(24,20)
+        FNOTE2 = _f(italic=True,bold=True,font_color='#E65100',font_size=8,align='left',valign='vcenter',
+                    bg_color='#FFF8E1',border=1,text_wrap=True)
+        ws_exec.merge_range(24,0,24,8,
+            '⚠️  CDNR rows show  —  because Credit Note reconciliation has not been run yet. '
+            'Run CDNR Reconciliation and re-download this report to see complete data.',FNOTE2)
 
-    # ── RECO SUMMARY ─────────────────────────────────────────────────────────
+    # ── RECO SUMMARY — Individual B2B Record Reconciliation ──────────────────
+    # Each row = one invoice pair (Books ↔ Portal), sorted by status priority
     ws_sum = wb.add_worksheet('Reco Summary')
-    ws_sum.write(0,4,'GSTIN:',fmt_bold);     ws_sum.write(0,5,company_gstin)
-    ws_sum.write(1,4,'Trade Name:',fmt_bold);ws_sum.write(1,5,company_name)
-    ws_sum.write(2,4,'F.Y.',fmt_bold);       ws_sum.write(2,5,fy)
-    ws_sum.write(3,4,'Period:',fmt_bold);    ws_sum.write(3,5,period)
 
-    FST=_f(bold=True,bg_color='#1F3864',font_color='white',align='center',valign='vcenter',font_size=12,border=1)
-    FSH=_f(bold=True,bg_color='#4472C4',font_color='white',border=1,align='center',valign='vcenter',text_wrap=True)
-    FSY=_f(bold=True,bg_color='#FFD966',border=1,align='left',valign='vcenter')
-    FSL=_f(bg_color='#F2F2F2',border=1,align='left',valign='vcenter')
-    FSV=_f(border=1,align='right',valign='vcenter',num_format='#,##0.00')
-    FSC=_f(border=1,align='center',valign='vcenter',num_format='#,##0')
+    # ── Formats ──────────────────────────────────────────────────────────────
+    FBANNER  = _f(bold=True,bg_color='#1F3864',font_color='white',align='center',valign='vcenter',font_size=13,border=1)
+    FKPI_L   = _f(bold=True,bg_color='#EFF4FF',font_color='#0D47A1',border=1,align='left',  valign='vcenter',font_size=9)
+    FKPI_V   = _f(bold=True,bg_color='#EFF4FF',font_color='#0D47A1',border=1,align='center',valign='vcenter',font_size=11,num_format='#,##0')
+    FGRP_BK  = _f(bold=True,bg_color='#ED7D31',font_color='white',  border=1,align='center',valign='vcenter',font_size=9)
+    FGRP_GT  = _f(bold=True,bg_color='#70AD47',font_color='white',  border=1,align='center',valign='vcenter',font_size=9)
+    FGRP_DF  = _f(bold=True,bg_color='#9E9E9E',font_color='white',  border=1,align='center',valign='vcenter',font_size=9)
+    FGRP_ST  = _f(bold=True,bg_color='#4472C4',font_color='white',  border=1,align='center',valign='vcenter',font_size=9)
+    FHDR_COL = _f(bold=True,bg_color='#4472C4',font_color='white',  border=1,align='center',valign='vcenter',font_size=8,text_wrap=True)
+    FHDR_IDX = _f(bold=True,bg_color='#263238',font_color='white',  border=1,align='center',valign='vcenter',font_size=8)
+    # Per-status row formats  (bg_color, font_color)
+    _STATUS_FMT = {
+        'Invoices Not in GSTR-2B':       ('#FFF2F2','#C00000'),
+        'Invoices Not in Purchase Books': ('#FFFBEA','#B8860B'),
+        'AI Matched (Mismatch)':          ('#FFF0F0','#C00000'),
+        'Matched (Tax Error)':            ('#FFFBEA','#B8860B'),
+        'AI Matched (Date Mismatch)':     ('#EBF3FB','#2E75B6'),
+        'AI Matched (Invoice Mismatch)':  ('#EBF3FB','#2E75B6'),
+        'AI Matched':                     ('#EBF3FB','#2E75B6'),
+        'Suggestion (Group Match)':       ('#F3E5F5','#7C3AED'),
+        'Suggestion':                     ('#EFF4FF','#1D4ED8'),
+        'Manually Linked':                ('#F0FFF4','#1E6B3C'),
+        'Matched':                        ('#F0FFF4','#1E6B3C'),
+    }
+    _STATUS_PRIORITY = {
+        'Invoices Not in GSTR-2B': 1, 'Invoices Not in Purchase Books': 2,
+        'AI Matched (Mismatch)': 3,   'Matched (Tax Error)': 4,
+        'AI Matched': 5,              'Suggestion (Group Match)': 6,
+        'Suggestion': 7,              'Manually Linked': 8,
+        'Matched': 9,
+    }
+    def _row_fmt(status, num=False, bold=False):
+        bg,fc='#FFFFFF','#37474F'
+        for k,(b,f) in _STATUS_FMT.items():
+            if k in str(status): bg,fc=b,f; break
+        kw=dict(bg_color=bg,font_color=fc,border=1,valign='vcenter',font_size=9)
+        if bold: kw['bold']=True
+        if num:  kw['num_format']='#,##0.00'; kw['align']='right'
+        else:    kw['align']='left'
+        return _f(**kw)
+    def _status_priority(s):
+        for k,v in _STATUS_PRIORITY.items():
+            if k in str(s): return v
+        return 10
 
-    SUM_COLS=['Description','No of Invoices','Taxable Value','IGST','CGST','SGST','CESS','Total GST','Total Invoice Value']
-    NC=len(SUM_COLS)
+    import pandas as _pd
+    def _v(val):
+        if val is None: return ''
+        if isinstance(val, float) and np.isnan(val): return ''
+        try:
+            if _pd.isnull(val): return ''
+        except (TypeError, ValueError):
+            pass
+        try:
+            if hasattr(val, 'strftime'):
+                return val.strftime('%d/%m/%Y')
+        except Exception:
+            pass
+        return val
+    def _n(val):
+        try:    return float(val) if val is not None and not (isinstance(val,float) and np.isnan(val)) else 0.0
+        except: return 0.0
 
-    def _r8(df_s, use_books=True):
-        sx='_BOOKS' if use_books else '_GST'
-        tv=_money(df_s,'Taxable Value'+sx); ig=_money(df_s,'IGST'+sx)
-        cg=_money(df_s,'CGST'+sx); sg=_money(df_s,'SGST'+sx); tg=ig+cg+sg
-        return [len(df_s),tv,ig,cg,sg,0.0,tg,tv+tg]
+    # ── Meta header ──────────────────────────────────────────────────────────
+    ws_sum.write(0,0,'GSTIN:',fmt_bold);     ws_sum.write(0,1,company_gstin)
+    ws_sum.write(1,0,'Trade Name:',fmt_bold);ws_sum.write(1,1,company_name)
+    ws_sum.write(2,0,'F.Y.:',fmt_bold);      ws_sum.write(2,1,fy)
+    ws_sum.write(3,0,'Period:',fmt_bold);    ws_sum.write(3,1,period)
+
+    # ── Compact KPI row ───────────────────────────────────────────────────────
+    bkdf_s  = full_df[full_df['Taxable Value_BOOKS'].notna()] if 'Taxable Value_BOOKS' in full_df.columns else full_df.iloc[0:0]
+    gstdf_s = full_df[full_df['Taxable Value_GST'].notna()]   if 'Taxable Value_GST'   in full_df.columns else full_df.iloc[0:0]
 
     def _bsub(pat):
         try:    return full_df[full_df['Recon_Status'].str.contains(pat,na=False)]
         except: return full_df.iloc[0:0]
 
-    def _block(ws, rp, title, specs):
-        ws.merge_range(rp,0,rp,NC-1,title,FST); rp+=1
-        for ci,h in enumerate(SUM_COLS): ws.write(rp,ci,h,FSH)
-        rp+=1
-        for i,(desc,vals) in enumerate(specs):
-            ws.write(rp,0,desc,FSY if i==0 else FSL)
-            ws.write(rp,1,vals[0],FSC)
-            for ci,v in enumerate(vals[1:],2): ws.write(rp,ci,v,FSV)
-            rp+=1
-        return rp+1
-
-    bkdf  = full_df[full_df['Taxable Value_BOOKS'].notna()] if 'Taxable Value_BOOKS' in full_df.columns else full_df.iloc[0:0]
-    gstdf = full_df[full_df['Taxable Value_GST'].notna()]   if 'Taxable Value_GST'   in full_df.columns else full_df.iloc[0:0]
-    b2b_specs=[
-        ('Total Invoices As Per Books',   _r8(bkdf)),
-        ('Total Invoices As Per GSTR-2B', _r8(gstdf,False)),
-        ('Total Matched Invoices',        _r8(_bsub('Matched'))),
-        ('Total AI-Matched Invoices',     _r8(_bsub('AI'))),
-        ('Total MisMatched Invoices',     _r8(_bsub('Mismatch'))),
-        ('Total MisMatched POS',          _r8(_bsub('POS'))),
-        ('Total MisMatched RCM',          _r8(_bsub('RCM'))),
-        ('Total Invoices Not In Books',   _r8(_bsub('Not in.*Books'),False)),
-        ('Total Invoices Not In GSTR-2B', _r8(_bsub('Not in GSTR-2B'))),
+    kpi_data = [
+        ('Books Invoices',      len(bkdf_s)),
+        ('Portal Invoices',     len(gstdf_s)),
+        ('Matched',             len(_bsub(r'Matched'))),
+        ('Mismatched',          len(_bsub(r'Mismatch'))),
+        ('Not in GSTR-2B',      len(_bsub(r'Not in GSTR-2B'))),
+        ('Not in Books',        len(_bsub(r'Not in.*Books'))),
+        ('Suggestions',         len(_bsub(r'Suggestion'))),
+        ('AI Matched',          len(_bsub(r'AI Matched'))),
     ]
-    row_ptr=_block(ws_sum,5,'B2B Reconciliation Report',b2b_specs)
+    ws_sum.set_row(4,6)
+    ws_sum.merge_range(5,0,5,15,'B2B Reconciliation — Individual Record View',FBANNER)
+    ws_sum.set_row(5,26)
+    for ki,(lbl,val) in enumerate(kpi_data):
+        col = ki * 2
+        ws_sum.write(6, col,   lbl, FKPI_L)
+        ws_sum.write(6, col+1, val, FKPI_V)
+    ws_sum.set_row(6,22)
 
-    if cdnr_df is not None and not cdnr_df.empty and 'Recon_Status_CDNR' in cdnr_df.columns:
-        cs=cdnr_df['Recon_Status_CDNR']
-        def _cr8(df_s,use_books=True):
-            sx='_BOOKS' if use_books else '_GST'
-            tv=_money(df_s,'Taxable Value'+sx); ig=_money(df_s,'IGST'+sx)
-            cg=_money(df_s,'CGST'+sx); sg=_money(df_s,'SGST'+sx); tg=ig+cg+sg
-            return [len(df_s),tv,ig,cg,sg,0.0,tg,tv+tg]
-        def _cs(pat):
-            try:    return cdnr_df[cs.str.contains(pat,na=False)]
-            except: return cdnr_df.iloc[0:0]
-        cdnr_bkdf  = cdnr_df[cdnr_df['Taxable Value_BOOKS'].notna()] if 'Taxable Value_BOOKS' in cdnr_df.columns else cdnr_df.iloc[0:0]
-        cdnr_gstdf = cdnr_df[cdnr_df['Taxable Value_GST'].notna()]   if 'Taxable Value_GST'   in cdnr_df.columns else cdnr_df.iloc[0:0]
-        cdnr_specs=[
-            ('Total Invoice As Per Books',    _cr8(cdnr_bkdf)),
-            ('Total Invoices As Per GSTR-2B', _cr8(cdnr_gstdf,False)),
-            ('Total Matched Invoices',        _cr8(_cs(r'CDNR Matched$'))),
-            ('Total AI-Matched Invoices',     _cr8(_cs('AI Matched'))),
-            ('Total MisMatched Invoices',     _cr8(_cs('Mismatch'))),
-            ('Total Invoices Not In Books',   _cr8(_cs('Not in Books'),False)),
-            ('Total Invoices Not In GSTR-2B', _cr8(_cs('Not in GSTR-2B'))),
-        ]
-        row_ptr=_block(ws_sum,row_ptr,'Credit Note Reconciliation Report',cdnr_specs)
+    # ── Column group headers (row 8) ──────────────────────────────────────────
+    # Columns layout:  #  | Name | GSTIN | -- BOOKS (4 cols) -- | -- PORTAL (4 cols) -- | Diff Taxable | Diff GST | Status
+    REC_COLS = [
+        '#', 'Name of Party', 'GSTIN',
+        'Inv No (Books)', 'Date (Books)', 'Taxable (Books)', 'IGST (B)', 'CGST (B)', 'SGST (B)',
+        'Inv No (Portal)', 'Date (Portal)', 'Taxable (Portal)', 'IGST (P)', 'CGST (P)', 'SGST (P)',
+        'Diff Taxable', 'Diff GST', 'Status',
+    ]
+    TOTAL_COLS = len(REC_COLS)  # 18
+    ws_sum.set_row(7,6)
+    ws_sum.set_row(8,18)
+    ws_sum.write(8, 0,'#',       FHDR_IDX)
+    ws_sum.merge_range(8,1,8,2,  'PARTY DETAILS',  FGRP_ST)
+    ws_sum.merge_range(8,3,8,8,  'BOOKS  (Purchase Register)', FGRP_BK)
+    ws_sum.merge_range(8,9,8,14, 'GSTR-2B  (Portal)',          FGRP_GT)
+    ws_sum.merge_range(8,15,8,16,'DIFFERENCE (Books − Portal)', FGRP_DF)
+    ws_sum.write(8,17, 'STATUS', FGRP_ST)
+    ws_sum.set_row(9,18)
+    for ci,h in enumerate(REC_COLS):
+        ws_sum.write(9, ci, h, FHDR_COL)
 
-    # Risk sidebar
-    n2b=full_df[full_df['Recon_Status'].str.contains('Not in GSTR-2B',na=False)]
-    if not n2b.empty and 'Name of Party' in n2b.columns:
-        risk=(n2b.groupby('Name of Party').size().reset_index(name='Missing Count')
-               .sort_values('Missing Count',ascending=False).head(5))
-        ws_sum.write(7,NC+1,'🚨 Top 5 Non-Compliant (Not in 2B)',fmt_red_hdr)
-        ws_sum.write(8,NC+1,'Vendor Name',fmt_gray); ws_sum.write(8,NC+2,'Missing Invoices',fmt_gray)
-        for ri,row in risk.iterrows():
-            ws_sum.write(9+ri,NC+1,row['Name of Party']); ws_sum.write(9+ri,NC+2,row['Missing Count'])
+    # ── Sort full_df by status priority ───────────────────────────────────────
+    df_for_reco = full_df.copy()
+    df_for_reco['_priority'] = df_for_reco['Recon_Status'].apply(_status_priority)
+    df_for_reco = df_for_reco.sort_values(['_priority','Name of Party']).reset_index(drop=True)
 
-    # ── DIFF TABLE in Reco Summary ────────────────────────────────────────────
-    row_ptr+=1
-    FDB=_f(bold=True,bg_color='#37474F',font_color='white',border=1,align='left',valign='vcenter',font_size=10)
-    FDH=_f(bold=True,bg_color='#0D47A1',font_color='white',border=1,align='center',valign='vcenter',font_size=9)
-    FGL=_f(bold=True,bg_color='#E3F2FD',font_color='#1565C0',border=1,align='left',valign='vcenter',font_size=9)
-    FGV=_f(bg_color='#E3F2FD',font_color='#37474F',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FBL=_f(bold=True,bg_color='#E8F5E9',font_color='#2E7D32',border=1,align='left',valign='vcenter',font_size=9)
-    FBV=_f(bg_color='#E8F5E9',font_color='#37474F',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FDL=_f(bold=True,bg_color='#FFF9C4',font_color='#37474F',border=1,align='left',valign='vcenter',font_size=9)
-    FDC=_f(bold=True,bg_color='#FFF9C4',font_color='#37474F',border=1,align='center',valign='vcenter',font_size=9)
-    FPV=_f(bold=True,bg_color='#DCEDC8',font_color='#2E7D32',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FNV=_f(bold=True,bg_color='#FFCDD2',font_color='#C62828',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FZV=_f(bold=True,bg_color='#FFF9C4',font_color='#757575',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FEB=_f(bold=True,bg_color='#546E7A',font_color='white',border=1,align='left',valign='vcenter',font_size=9)
-    FEH=_f(bold=True,bg_color='#546E7A',font_color='white',border=1,align='center',valign='vcenter',font_size=8)
-    FEF=_f(bold=True,border=1,align='left',valign='vcenter',font_size=9)
-    FEG=_f(bg_color='#E3F2FD',font_color='#1565C0',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FEB2=_f(bg_color='#E8F5E9',font_color='#2E7D32',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FOP=_f(bold=True,border=1,align='center',valign='vcenter',font_size=11)
-    FEP=_f(bold=True,bg_color='#DCEDC8',font_color='#2E7D32',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FEN=_f(bold=True,bg_color='#FFCDD2',font_color='#C62828',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FEZ=_f(bold=True,bg_color='#FFF9C4',font_color='#757575',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FSP=_f(bg_color='#DCEDC8',font_color='#2E7D32',border=1,align='center',valign='vcenter',font_size=9)
-    FSN=_f(bg_color='#FFCDD2',font_color='#C62828',border=1,align='center',valign='vcenter',font_size=9)
-    FSZ=_f(bg_color='#FFF9C4',font_color='#757575',border=1,align='center',valign='vcenter',font_size=9)
-    FCP=_f(bold=True,bg_color='#DCEDC8',font_color='#2E7D32',border=1,align='center',valign='vcenter',font_size=9,num_format='#,##0')
-    FCN=_f(bold=True,bg_color='#FFCDD2',font_color='#C62828',border=1,align='center',valign='vcenter',font_size=9,num_format='#,##0')
-    FCZ=_f(bold=True,bg_color='#FFF9C4',font_color='#757575',border=1,align='center',valign='vcenter',font_size=9,num_format='#,##0')
-    FCP0=_f(border=1,align='center',valign='vcenter',font_size=9,num_format='#,##0')
+    # ── Write individual records ───────────────────────────────────────────────
+    data_start_row = 10
+    ws_sum.freeze_panes(10, 3)
 
-    def _dvf(v): return FPV if v>0.01 else FNV if v<-0.01 else FZV
-    def _evf(v): return FEP if v>0.01 else FEN if v<-0.01 else FEZ
-    def _svf(v): return FSP if v>0.01 else FSN if v<-0.01 else FSZ
-    def _cvf(v): return FCP if v>0 else FCN if v<0 else FCZ
-    def _st(v):  return '🟢 More in Portal' if v>0.01 else '🔴 ITC Risk' if v<-0.01 else '✅ Match'
+    for ri, row in df_for_reco.iterrows():
+        excel_row = data_start_row + ri
+        status = str(row.get('Recon_Status',''))
+        ws_sum.set_row(excel_row, 16)
 
-    def _write_diff_block(ws, rp, label, bk_v, gst_v):
-        ws.merge_range(rp,0,rp,NC-1,f'📊  {label}  —  GSTR-2B vs Books  Difference  (B − A)',FDB)
-        ws.set_row(rp,22); rp+=1
-        for ci,h in enumerate(['Description','Count','Taxable','IGST','CGST','SGST','CESS','Total GST','Total']):
-            ws.write(rp,ci,h,FDH)
-        ws.set_row(rp,20); rp+=1
-        # GSTR-2B row
-        ws.write(rp,0,'GSTR-2B (B)',FGL); ws.write(rp,1,gst_v[0],FCP0)
-        for ci,v in enumerate(gst_v[1:],2): ws.write(rp,ci,v,FGV)
-        ws.set_row(rp,20); rp+=1
-        # Books row
-        ws.write(rp,0,'Books (A)',FBL); ws.write(rp,1,bk_v[0],FCP0)
-        for ci,v in enumerate(bk_v[1:],2): ws.write(rp,ci,v,FBV)
-        ws.set_row(rp,20); rp+=1
-        # Diff row
-        ws.write(rp,0,'Difference (B − A)',FDL)
-        dc=int(gst_v[0])-int(bk_v[0]); ws.write(rp,1,dc,_cvf(dc))
-        for ci in range(2,9):
-            dv=gst_v[ci-1]-bk_v[ci-1]; ws.write(rp,ci,dv,_dvf(dv))
-        ws.set_row(rp,22); rp+=2
-        # Equation table
-        ws.merge_range(rp,0,rp,6,'📐  Equation Detail  (GSTR-2B  −  Books  =  Difference)',FEB)
-        ws.set_row(rp,18); rp+=1
-        for ci,h in enumerate(['Field','GSTR-2B (B)','  −  ','Books (A)','  =  ','Difference','Status']):
-            ws.write(rp,ci,h,FEH)
-        ws.set_row(rp,18); rp+=1
-        for fname,idx in [('Taxable',1),('IGST',2),('CGST',3),('SGST',4),('CESS',5),('Total GST',6),('Total',7)]:
-            gv=gst_v[idx]; bv=bk_v[idx]; dv=gv-bv
-            ws.write(rp,0,fname,FEF); ws.write(rp,1,gv,FEG); ws.write(rp,2,'−',FOP)
-            ws.write(rp,3,bv,FEB2); ws.write(rp,4,'=',FOP); ws.write(rp,5,dv,_evf(dv))
-            ws.write(rp,6,_st(dv),_svf(dv)); ws.set_row(rp,18); rp+=1
-        return rp+1
+        fmt_txt = _row_fmt(status, num=False)
+        fmt_num = _row_fmt(status, num=True)
+        fmt_idx = _f(bg_color='#F5F5F5', font_color='#9E9E9E', border=1, align='center', valign='vcenter', font_size=8)
 
-    row_ptr=_write_diff_block(ws_sum,row_ptr,'B2B',bk_b2b,gst_b2b)
-    if cdnr_df is not None and not cdnr_df.empty:
-        row_ptr=_write_diff_block(ws_sum,row_ptr,'CDNR',bk_cdnr,gst_cdnr)
-        row_ptr=_write_diff_block(ws_sum,row_ptr,'Overall (B2B + CDNR)',bk_total,gst_grand)
+        b_tax  = _n(row.get('Taxable Value_BOOKS'));  b_igst = _n(row.get('IGST_BOOKS'))
+        b_cgst = _n(row.get('CGST_BOOKS'));           b_sgst = _n(row.get('SGST_BOOKS'))
+        g_tax  = _n(row.get('Taxable Value_GST'));    g_igst = _n(row.get('IGST_GST'))
+        g_cgst = _n(row.get('CGST_GST'));             g_sgst = _n(row.get('SGST_GST'))
+        d_tax  = b_tax - g_tax
+        d_gst  = (b_igst+b_cgst+b_sgst) - (g_igst+g_cgst+g_sgst)
 
-    ws_sum.set_column(0,0,34); ws_sum.set_column(1,1,14); ws_sum.set_column(2,8,15)
+        ws_sum.write(excel_row,  0, ri+1,                               fmt_idx)
+        ws_sum.write(excel_row,  1, _v(row.get('Name of Party','')),    fmt_txt)
+        ws_sum.write(excel_row,  2, _v(row.get('GSTIN','')),            fmt_txt)
+        ws_sum.write(excel_row,  3, _v(row.get('Invoice Number_BOOKS','')), fmt_txt)
+        ws_sum.write(excel_row,  4, _v(row.get('Invoice Date_BOOKS','')),   fmt_txt)
+        ws_sum.write(excel_row,  5, b_tax,   fmt_num)
+        ws_sum.write(excel_row,  6, b_igst,  fmt_num)
+        ws_sum.write(excel_row,  7, b_cgst,  fmt_num)
+        ws_sum.write(excel_row,  8, b_sgst,  fmt_num)
+        ws_sum.write(excel_row,  9, _v(row.get('Invoice Number_GST','')),  fmt_txt)
+        ws_sum.write(excel_row, 10, _v(row.get('Invoice Date_GST','')),    fmt_txt)
+        ws_sum.write(excel_row, 11, g_tax,   fmt_num)
+        ws_sum.write(excel_row, 12, g_igst,  fmt_num)
+        ws_sum.write(excel_row, 13, g_cgst,  fmt_num)
+        ws_sum.write(excel_row, 14, g_sgst,  fmt_num)
+
+        # Diff columns — colour based on sign
+        def _diff_fmt(v, stat):
+            bg,fc = '#FFFFFF','#37474F'
+            for k,(b,f) in _STATUS_FMT.items():
+                if k in stat: bg,fc=b,f; break
+            if   v > 0.5:  return _f(bold=True,bg_color=bg,font_color='#C00000',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+            elif v < -0.5: return _f(bold=True,bg_color=bg,font_color='#2E7D32',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+            else:           return _f(bg_color=bg,font_color='#757575',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+
+        ws_sum.write(excel_row, 15, d_tax, _diff_fmt(d_tax,  status))
+        ws_sum.write(excel_row, 16, d_gst, _diff_fmt(d_gst,  status))
+
+        # Status pill
+        fmt_st = _row_fmt(status, num=False, bold=True)
+        ws_sum.write(excel_row, 17, status, fmt_st)
+
+    total_data_rows = len(df_for_reco)
+
+    # ── Totals row ────────────────────────────────────────────────────────────
+    tot_row = data_start_row + total_data_rows
+    FTOT = _f(bold=True,bg_color='#1F3864',font_color='white',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FTOT_L = _f(bold=True,bg_color='#1F3864',font_color='white',border=1,align='center',valign='vcenter',font_size=9)
+    ws_sum.merge_range(tot_row,0,tot_row,4,'TOTALS',FTOT_L)
+    def _col_sum(col):
+        return float(full_df[col].fillna(0).sum()) if col in full_df.columns else 0.0
+    for ci,col in enumerate(['Taxable Value_BOOKS','IGST_BOOKS','CGST_BOOKS','SGST_BOOKS'],5):
+        ws_sum.write(tot_row, ci, _col_sum(col), FTOT)
+    ws_sum.write(tot_row, 9,  '', FTOT_L)
+    ws_sum.write(tot_row, 10, '', FTOT_L)
+    for ci,col in enumerate(['Taxable Value_GST','IGST_GST','CGST_GST','SGST_GST'],11):
+        ws_sum.write(tot_row, ci, _col_sum(col), FTOT)
+    d_tax_tot = _col_sum('Taxable Value_BOOKS') - _col_sum('Taxable Value_GST')
+    d_gst_tot = (_col_sum('IGST_BOOKS')+_col_sum('CGST_BOOKS')+_col_sum('SGST_BOOKS')) - \
+                (_col_sum('IGST_GST')  +_col_sum('CGST_GST')  +_col_sum('SGST_GST'))
+    ws_sum.write(tot_row,15, d_tax_tot, FTOT)
+    ws_sum.write(tot_row,16, d_gst_tot, FTOT)
+    ws_sum.write(tot_row,17, f'{total_data_rows} records', FTOT_L)
+    ws_sum.set_row(tot_row,20)
+
+    # ── Column widths ──────────────────────────────────────────────────────────
+    ws_sum.set_column(0, 0,  5)   # #
+    ws_sum.set_column(1, 1, 24)   # Name
+    ws_sum.set_column(2, 2, 18)   # GSTIN
+    ws_sum.set_column(3, 3, 16)   # Inv No Books
+    ws_sum.set_column(4, 4, 12)   # Date Books
+    ws_sum.set_column(5, 8, 13)   # Taxable IGST CGST SGST Books
+    ws_sum.set_column(9, 9, 16)   # Inv No Portal
+    ws_sum.set_column(10,10,12)   # Date Portal
+    ws_sum.set_column(11,14,13)   # Taxable IGST CGST SGST Portal
+    ws_sum.set_column(15,16,14)   # Diff
+    ws_sum.set_column(17,17,28)   # Status
+
+    row_ptr = tot_row + 2
 
     # ── DATA SHEETS ───────────────────────────────────────────────────────────
     display_cols=['GSTIN','Name of Party',

@@ -17,7 +17,8 @@ def smart_invoice_clean(val):
     try:
         f_val = float(s_val)
         if f_val.is_integer(): return str(int(f_val))
-    except: pass
+    except (ValueError, OverflowError):
+        pass
     return "".join(char for char in s_val if char.isalnum()).upper()
 
 def numeric_invoice_clean(val):
@@ -71,6 +72,14 @@ def perform_merge_pass(df_left, df_right, key_col, status_label, logic_label,
         matched = potential[valid_mask].copy()
         matched['Recon_Status'] = status_label
         matched['Match_Logic']  = logic_label
+        # Confidence score: 100 for exact, reduced by diff ratio and pass type
+        if len(matched) > 0:
+            _max_taxable = matched[['Taxable Value_BOOKS','Taxable Value_GST']].max(axis=1).replace(0, 1)
+            _diff_ratio  = (matched['Taxable Value_BOOKS'].fillna(0) - matched['Taxable Value_GST'].fillna(0)).abs() / _max_taxable
+            _base = 100 if 'Exact' in logic_label else 92 if 'Date' in logic_label else 85 if 'Invoice' in logic_label else 78 if 'Value Mismatch' in logic_label else 70
+            matched['Match_Confidence'] = (_base - (_diff_ratio * 30).clip(upper=30)).round(1)
+        else:
+            matched['Match_Confidence'] = 100.0
 
         failed_matches = potential[~valid_mask].copy()
 
@@ -261,12 +270,21 @@ def run_reconciliation(df_books, df_gst, tolerance, manual_pairs, smart_mode_ena
         results.append(matched_5c)
 
     # Step 6: Group Matching ([ENHANCED] VENUS MILL FIX)
+    # Tolerance scales with invoice count — a vendor with 10 invoices gets 10x tolerance
     progress_bar.progress(90, text="Step 6: Group Matching...")
 
-    b_grp = books_left.groupby('GSTIN')['Taxable Value'].sum()
-    g_grp = gst_left.groupby('GSTIN')['Taxable Value'].sum()
+    b_grp     = books_left.groupby('GSTIN')['Taxable Value'].sum()
+    g_grp     = gst_left.groupby('GSTIN')['Taxable Value'].sum()
+    b_cnt     = books_left.groupby('GSTIN').size()
+    g_cnt     = gst_left.groupby('GSTIN').size()
     common_gstins = b_grp.index.intersection(g_grp.index)
-    match_gstins  = [g for g in common_gstins if abs(b_grp[g] - g_grp[g]) <= tolerance]
+
+    match_gstins = []
+    for gstin in common_gstins:
+        n_invoices       = max(b_cnt.get(gstin, 1), g_cnt.get(gstin, 1))
+        group_tolerance  = max(tolerance * n_invoices, 50.0)   # at least ₹50 even for 1 invoice
+        if abs(b_grp[gstin] - g_grp[gstin]) <= group_tolerance:
+            match_gstins.append(gstin)
 
     if match_gstins:
         b_group_match = books_left[books_left['GSTIN'].isin(match_gstins)].copy()
@@ -274,12 +292,14 @@ def run_reconciliation(df_books, df_gst, tolerance, manual_pairs, smart_mode_ena
 
         # Add Suffix FIRST, then status columns (prevents Recon_Status_BOOKS)
         b_group_match = b_group_match.add_suffix('_BOOKS')
-        b_group_match['Recon_Status'] = "Suggestion (Group Match)"
-        b_group_match['Match_Logic']  = "Total Value Matches"
+        b_group_match['Recon_Status']    = "Suggestion (Group Match)"
+        b_group_match['Match_Logic']     = "Total Value Matches"
+        b_group_match['Match_Confidence']= 60.0
 
         g_group_match = g_group_match.add_suffix('_GST')
-        g_group_match['Recon_Status'] = "Suggestion (Group Match)"
-        g_group_match['Match_Logic']  = "Total Value Matches"
+        g_group_match['Recon_Status']    = "Suggestion (Group Match)"
+        g_group_match['Match_Logic']     = "Total Value Matches"
+        g_group_match['Match_Confidence']= 60.0
 
         results.append(b_group_match)
         results.append(g_group_match)
@@ -290,12 +310,14 @@ def run_reconciliation(df_books, df_gst, tolerance, manual_pairs, smart_mode_ena
     # Finalize Leftovers — Add Suffix FIRST
     progress_bar.progress(95, text="Finalizing...")
     books_left = books_left.add_suffix('_BOOKS')
-    books_left['Recon_Status'] = "Invoices Not in GSTR-2B"
-    books_left['Match_Logic']  = "Unmatched"
+    books_left['Recon_Status']    = "Invoices Not in GSTR-2B"
+    books_left['Match_Logic']     = "Unmatched"
+    books_left['Match_Confidence']= 0.0
 
     gst_left = gst_left.add_suffix('_GST')
-    gst_left['Recon_Status'] = "Invoices Not in Purchase Books"
-    gst_left['Match_Logic']  = "Unmatched"
+    gst_left['Recon_Status']    = "Invoices Not in Purchase Books"
+    gst_left['Match_Logic']     = "Unmatched"
+    gst_left['Match_Confidence']= 0.0
 
     results.append(books_left)
     results.append(gst_left)
