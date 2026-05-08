@@ -550,6 +550,294 @@ st.markdown("""
         margin: 24px auto 0;
     }
 
+    /* Results dashboard and tab workspace theme */
+    .results-topbar {
+        background: #131b2e;
+        color: #bec6e0;
+        margin: -18px -16px 24px;
+        padding: 18px 32px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid rgba(255,255,255,.12);
+        position: sticky;
+        top: 0;
+        z-index: 20;
+    }
+    .results-brand { display: flex; align-items: center; gap: 14px; }
+    .results-brand-title {
+        font-size: 28px;
+        line-height: 1.15;
+        font-weight: 900;
+        letter-spacing: 0 !important;
+        color: #bec6e0 !important;
+    }
+    .results-version {
+        background: #dae2fd;
+        color: #131b2e;
+        border-radius: 5px;
+        padding: 8px 12px;
+        font-size: 11px;
+        font-weight: 900;
+        line-height: 1.1;
+        box-shadow: 0 8px 18px rgba(0,0,0,.18);
+    }
+    .results-nav {
+        display: flex;
+        gap: 34px;
+        align-items: center;
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: .08em;
+        color: #7c839b;
+    }
+    .results-nav .active {
+        color: #bec6e0;
+        border-bottom: 3px solid #2170e4;
+        padding-bottom: 13px;
+    }
+    .results-action-row { display: flex; align-items: center; gap: 14px; }
+    .results-top-btn {
+        border: 1px solid #c6c6cd;
+        border-radius: 10px;
+        padding: 10px 26px;
+        min-width: 126px;
+        text-align: center;
+        color: #bec6e0;
+        font-weight: 900;
+        line-height: 1.15;
+    }
+    .results-top-btn.primary {
+        background: #2170e4;
+        color: #fff;
+        border-color: #2170e4;
+    }
+    .results-icon-dot {
+        width: 36px;
+        height: 36px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        border: 1px solid transparent;
+        color: #7c839b;
+        font-size: 20px;
+    }
+    .results-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 28%, #7dd3fc, #164e63 68%);
+        border: 1px solid #adc6ff;
+    }
+    .results-shell {
+        background: #fcf8fa;
+        border: 1px solid #c6c6cd;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 18px;
+    }
+    .recon-success-bar { display: none !important; }
+    .results-client-row {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        gap: 26px;
+        align-items: stretch;
+        margin-bottom: 18px;
+    }
+    .results-client-card {
+        background: #fff;
+        border: 1px solid #c6c6cd;
+        border-radius: 10px;
+        padding: 22px;
+    }
+    .results-client-name { font-size: 22px; line-height: 1.28; font-weight: 900; color: #000; }
+    .results-client-fy { color: #76777d; margin-top: 12px; font-size: 15px; }
+    .results-status {
+        background: #dae2fd;
+        border: 1px solid #adc6ff;
+        border-radius: 8px;
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: #1b1b1d;
+        font-size: 14px;
+        letter-spacing: .04em;
+    }
+    .results-status .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #22c55e;
+        display: inline-block;
+        margin-right: 12px;
+    }
+    .results-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 24px;
+        margin-bottom: 24px;
+    }
+    .itc-net-banner {
+        background: transparent !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        padding: 0 !important;
+        display: grid !important;
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 24px !important;
+        margin-bottom: 24px !important;
+    }
+    .itc-net-banner .itc-sep { display: none !important; }
+    .itc-net-banner .itc-item {
+        background: #fff !important;
+        border: 1px solid #c6c6cd !important;
+        border-radius: 8px !important;
+        padding: 28px 30px !important;
+        text-align: left !important;
+    }
+    .itc-net-banner .itc-item-label {
+        color: #1b1b1d !important;
+        font-size: 13px !important;
+        font-weight: 900 !important;
+        letter-spacing: .08em !important;
+        text-transform: uppercase !important;
+        margin-bottom: 16px !important;
+    }
+    .itc-net-banner .itc-item-val {
+        font-size: 30px !important;
+        line-height: 1.05 !important;
+        font-weight: 900 !important;
+        letter-spacing: 0 !important;
+        color: #000 !important;
+    }
+    .itc-net-banner .itc-item-val-blue { color: #0058be !important; }
+    .itc-net-banner .itc-item-val-red { color: #ba1a1a !important; }
+    .itc-net-banner .itc-item-val-grn { color: #05943c !important; }
+    .results-kpi {
+        background: #fff;
+        border: 1px solid #c6c6cd;
+        border-radius: 8px;
+        padding: 28px 30px;
+    }
+    .results-kpi-label {
+        color: #1b1b1d;
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        margin-bottom: 16px;
+    }
+    .results-kpi-value {
+        font-size: 30px;
+        line-height: 1.05;
+        font-weight: 900;
+        letter-spacing: 0 !important;
+        color: #000;
+    }
+    .results-kpi-value.blue { color: #0058be; }
+    .results-kpi-value.red { color: #ba1a1a; }
+    .results-kpi-value.green { color: #05943c; }
+    .results-score-grid {
+        display: grid;
+        grid-template-columns: 1.15fr .85fr 1.45fr;
+        gap: 24px;
+        align-items: stretch;
+        margin-bottom: 24px;
+    }
+    .results-panel {
+        background: #fff;
+        border: 1px solid #c6c6cd;
+        border-radius: 8px;
+        padding: 28px;
+        min-height: 330px;
+    }
+    .results-panel-title {
+        font-size: 15px;
+        font-weight: 900;
+        color: #111;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        margin-bottom: 24px;
+    }
+    .results-status-stack { display: grid; gap: 10px; }
+    .results-status-tile {
+        border-radius: 8px;
+        padding: 26px 12px;
+        min-height: 104px;
+    }
+    .results-status-tile.good { background: #eefbf2; border: 1px solid #86efac; color: #057333; }
+    .results-status-tile.bad { background: #fff1f2; border: 1px solid #fca5a5; color: #ba1a1a; }
+    .results-status-tile.warn { background: #fffbeb; border: 1px solid #facc15; color: #b45309; }
+    .results-status-label { font-size: 12px; font-weight: 900; text-transform: uppercase; }
+    .results-status-value { font-size: 28px; font-weight: 900; margin-top: 8px; }
+    .results-risk-row {
+        display: grid;
+        grid-template-columns: 34px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        padding: 13px 0;
+        border-bottom: 1px solid #e4e2e4;
+    }
+    .results-risk-rank { color: #9ca3af; font-weight: 900; text-align: center; }
+    .results-risk-name { color: #111; font-size: 14px; font-weight: 900; letter-spacing: .06em; }
+    .results-risk-sub { color: #ba1a1a; font-size: 12px; margin-top: 2px; }
+    .results-risk-amount { color: #ba1a1a; font-weight: 900; white-space: nowrap; }
+    .results-cta {
+        background: #2170e4;
+        border-radius: 8px;
+        color: #fff;
+        padding: 28px 32px;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 18px;
+        margin-bottom: 8px;
+    }
+    .results-cta-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        background: rgba(255,255,255,.18);
+        display: grid;
+        place-items: center;
+        font-size: 22px;
+    }
+    .results-cta-title { font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+    .results-cta-sub { opacity: .9; }
+    .results-cta-button {
+        background: #fff;
+        color: #0058be;
+        padding: 16px 34px;
+        border-radius: 8px;
+        font-weight: 900;
+        font-size: 18px;
+    }
+    .tab-theme-head {
+        background: #131b2e;
+        border-radius: 12px;
+        padding: 18px 22px;
+        margin-bottom: 18px;
+        color: #fff;
+    }
+    .tab-theme-title { font-size: 18px; font-weight: 900; color: #fff; }
+    .tab-theme-sub { font-size: 12px; color: #bec6e0; margin-top: 2px; }
+    .stTabs [data-baseweb="tab-list"] {
+        border: 1px solid #c6c6cd !important;
+        border-radius: 10px !important;
+        padding: 6px !important;
+        background: #fff !important;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background: #2170e4 !important;
+        color: #fff !important;
+    }
+    @media (max-width: 1100px) {
+        .results-client-row, .results-score-grid { grid-template-columns: 1fr; }
+        .results-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .results-nav { display: none; }
+    }
+
     /* Overdue alert sidebar */
     .overdue-alert { background: rgba(214,57,32,.18); border-radius: 10px; padding: 10px 12px; margin: 6px 0; }
     .overdue-text { font-size: 11px; font-weight: 700; color: #FCA5A5 !important; }
@@ -1525,6 +1813,38 @@ elif st.session_state.app_stage == 'processing':
 # ==========================================
 elif st.session_state.app_stage == 'results':
 
+    st.markdown(f"""
+    <div class="results-topbar">
+      <div class="results-brand">
+        <div class="results-brand-title">GST Reconciliation<br>Tool</div>
+        <div class="results-version">Enterprise<br>v9.0</div>
+      </div>
+      <div class="results-nav">
+        <span class="active">Dashboard</span>
+        <span>GSTR-2B vs Purchase<br>Register</span>
+        <span>Results</span>
+      </div>
+      <div class="results-action-row">
+        <div class="results-top-btn primary">New<br>Recon</div>
+        <div class="results-top-btn">Open<br>Folder</div>
+        <div class="results-icon-dot">⌁</div>
+        <div class="results-icon-dot">⚙</div>
+        <div class="results-icon-dot">?</div>
+        <div class="results-avatar"></div>
+      </div>
+    </div>
+    <div class="results-client-row">
+      <div class="results-client-card">
+        <div class="results-client-name">{st.session_state['meta_name']}</div>
+        <div class="results-client-fy">FY {st.session_state['meta_fy']}</div>
+      </div>
+      <div class="results-status">
+        <div><span class="dot"></span><b>B2B Reconciliation Complete</b> — {st.session_state['meta_name'].upper()} · {st.session_state['meta_period']} {st.session_state['meta_fy']} · <span style="color:#76777d">{st.session_state['meta_gstin']}</span></div>
+        <div style="font-size:22px;color:#2170e4">ⓘ</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     # ── Result header banner ─────────────────────────────────────────────────
     st.markdown(f"""
     <div class="recon-success-bar" style="display:flex;align-items:center;justify-content:space-between">
@@ -2057,6 +2377,7 @@ elif st.session_state.app_stage == 'results':
     # TAB 3 — DETAILED DATA
     # ─────────────────────────────────────────────────────
     with tab4:
+        st.markdown('<div class="tab-theme-head"><div class="tab-theme-title">Detailed Data</div><div class="tab-theme-sub">Search, filter, review, and export every reconciled row with the same enterprise workspace theme.</div></div>', unsafe_allow_html=True)
         _t3c1, _t3c2 = st.columns([2, 2])
         with _t3c1:
             filters = ["All Data", "Matched", "Mismatch (Value)", "AI Matched",
@@ -2204,6 +2525,7 @@ elif st.session_state.app_stage == 'results':
     # TAB 4 — SUPPLIER WISE
     # ─────────────────────────────────────────────────────
     with tab5:
+        st.markdown('<div class="tab-theme-head"><div class="tab-theme-title">Supplier Wise</div><div class="tab-theme-sub">Vendor-level risk, invoice counts, taxable exposure, and supplier grouping remain available in this view.</div></div>', unsafe_allow_html=True)
         pivot = result.groupby('Name of Party').agg(
             Total_Invoices  =('GSTIN_BOOKS' if 'GSTIN_BOOKS' in result.columns else 'GSTIN', 'count'),
             Taxable_Value   =('Final_Taxable', 'sum'),
@@ -2223,6 +2545,7 @@ elif st.session_state.app_stage == 'results':
     # TAB 5 — MANUAL MATCHER
     # ─────────────────────────────────────────────────────
     with tab6:
+        st.markdown('<div class="tab-theme-head"><div class="tab-theme-title">Manual Matcher</div><div class="tab-theme-sub">Review unmatched records and create manual links without leaving the refreshed results workspace.</div></div>', unsafe_allow_html=True)
         c1, c2 = st.columns([2, 1])
         with c1: st.write("🔗 **Link Unmatched Invoices Manually**")
         with c2:
@@ -2269,6 +2592,7 @@ elif st.session_state.app_stage == 'results':
     # TAB 6 — VENDOR COMMS
     # ─────────────────────────────────────────────────────
     with tab7:
+        st.markdown('<div class="tab-theme-head"><div class="tab-theme-title">Send Notice</div><div class="tab-theme-sub">Generate vendor notices, PDFs, WhatsApp text, Excel splits, and follow-up entries from one themed action center.</div></div>', unsafe_allow_html=True)
         st.subheader("💬 Vendor Communication Center")
 
         # ─────────────────────────────────────────────────────────────────────
@@ -2752,6 +3076,7 @@ elif st.session_state.app_stage == 'results':
     # TAB 8 — FOLLOW-UP TRACKER
     # ─────────────────────────────────────────────────────
     with tab8:
+        st.markdown('<div class="tab-theme-head"><div class="tab-theme-title">Follow-up Tracker</div><div class="tab-theme-sub">Track notices sent, response status, overdue vendors, notes, and follow-up exports.</div></div>', unsafe_allow_html=True)
         _nt_sent = st.session_state.get('notices_sent_count', 0)
         if _nt_sent > 0:
             st.success(f"✅ {_nt_sent} notice(s) sent this session — vendors are tracked below.")
@@ -2894,6 +3219,7 @@ elif st.session_state.app_stage == 'results':
     # TAB 2 — CDNR MATCHING
     # ─────────────────────────────────────────────────────
     with tab2:
+        st.markdown('<div class="tab-theme-head"><div class="tab-theme-title">CDNR Matching</div><div class="tab-theme-sub">Run credit/debit note reconciliation, review CDNR status, fix unknown parties, and generate CDNR reports.</div></div>', unsafe_allow_html=True)
         st.markdown("### 📋 CDNR Reconciliation — Credit & Debit Notes")
         st.caption(
             "Matches Credit/Debit Notes from your **Books (CDNR sheet)** against **GSTR-2B CDNR sheet**. "
@@ -3111,6 +3437,7 @@ elif st.session_state.app_stage == 'results':
     # TAB 8 — BACKUP & RESTORE
     # ─────────────────────────────────────────────────────
     with tab9:
+        st.markdown('<div class="tab-theme-head"><div class="tab-theme-title">Backup & Restore</div><div class="tab-theme-sub">Export or restore the complete reconciliation history database with clear safety prompts.</div></div>', unsafe_allow_html=True)
         st.markdown("### 💾 Backup & Restore")
         st.markdown(
             "Export your **entire database** (all clients, history, follow-up tracker) as a single file "
