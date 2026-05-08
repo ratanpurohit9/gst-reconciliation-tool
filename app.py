@@ -832,16 +832,11 @@ st.markdown("""
     }
 
     /* Results dashboard and tab workspace theme */
-    .main .block-container:has(.results-topbar) {
-        max-width: 100% !important;
-        padding: 0 40px 42px 360px !important;
-        background: #fcf8fa !important;
-    }
     .results-topbar {
         background: #131b2e;
         color: #bec6e0;
-        margin: 0 -40px 40px -360px;
-        padding: 20px 40px;
+        margin: -18px -16px 24px;
+        padding: 18px 32px;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -849,64 +844,6 @@ st.markdown("""
         position: sticky;
         top: 0;
         z-index: 20;
-    }
-    .results-sidenav {
-        position: fixed;
-        left: 0;
-        top: 100px;
-        bottom: 0;
-        width: 320px;
-        background: #fcf8fa;
-        border-right: 1px solid #c6c6cd;
-        padding: 46px 10px 28px;
-        z-index: 15;
-        display: flex;
-        flex-direction: column;
-    }
-    .results-side-client {
-        padding: 0 20px 44px;
-    }
-    .results-side-name {
-        font-size: 26px;
-        line-height: 1.28;
-        color: #000;
-        font-weight: 800;
-    }
-    .results-side-fy {
-        color: #76777d;
-        font-size: 18px;
-        margin-top: 8px;
-    }
-    .results-side-nav {
-        display: grid;
-        gap: 10px;
-    }
-    .results-side-item {
-        min-height: 50px;
-        border-radius: 8px;
-        padding: 0 32px;
-        display: flex;
-        align-items: center;
-        gap: 18px;
-        color: #1b1b1d;
-        font-size: 15px;
-        font-weight: 700;
-        letter-spacing: .06em;
-    }
-    .results-side-item.active {
-        background: #2170e4;
-        color: #fff;
-    }
-    .results-side-icon {
-        width: 26px;
-        font-size: 24px;
-        text-align: center;
-        line-height: 1;
-    }
-    .results-side-footer {
-        margin-top: auto;
-        padding-top: 28px;
-        border-top: 1px solid #c6c6cd;
     }
     .results-brand { display: flex; align-items: center; gap: 14px; }
     .results-brand-title {
@@ -981,9 +918,18 @@ st.markdown("""
         margin-bottom: 18px;
     }
     .recon-success-bar { display: none !important; }
-    .results-client-row { display: block; margin-bottom: 30px; }
+    .results-client-row {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        gap: 26px;
+        align-items: stretch;
+        margin-bottom: 18px;
+    }
     .results-client-card {
-        display: none;
+        background: #fff;
+        border: 1px solid #c6c6cd;
+        border-radius: 10px;
+        padding: 22px;
     }
     .results-client-name { font-size: 22px; line-height: 1.28; font-weight: 900; color: #000; }
     .results-client-fy { color: #76777d; margin-top: 12px; font-size: 15px; }
@@ -1011,7 +957,7 @@ st.markdown("""
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 24px;
-        margin-bottom: 30px;
+        margin-bottom: 24px;
     }
     .itc-net-banner {
         background: transparent !important;
@@ -1078,14 +1024,14 @@ st.markdown("""
         grid-template-columns: 1.15fr .85fr 1.45fr;
         gap: 24px;
         align-items: stretch;
-        margin-bottom: 30px;
+        margin-bottom: 24px;
     }
     .results-panel {
         background: #fff;
         border: 1px solid #c6c6cd;
         border-radius: 8px;
         padding: 28px;
-        min-height: 360px;
+        min-height: 330px;
     }
     .results-panel-title {
         font-size: 15px;
@@ -1098,20 +1044,8 @@ st.markdown("""
     .results-status-stack { display: grid; gap: 10px; }
     .results-status-tile {
         border-radius: 8px;
-        padding: 48px 18px 26px;
-        min-height: 168px;
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-    }
-    .results-status-tile-icon {
-        position: absolute;
-        right: 18px;
-        top: 50%;
-        transform: translateY(-50%);
-        font-size: 28px;
-        font-weight: 900;
+        padding: 26px 12px;
+        min-height: 104px;
     }
     .results-status-tile.good { background: #eefbf2; border: 1px solid #86efac; color: #057333; }
     .results-status-tile.bad { background: #fff1f2; border: 1px solid #fca5a5; color: #ba1a1a; }
@@ -1160,68 +1094,26 @@ st.markdown("""
         font-weight: 900;
         font-size: 18px;
     }
-    .main .block-container:has(.results-topbar) .next-step-hint {
-        background: #2170e4 !important;
-        border: 1px solid #0058be !important;
-        border-radius: 8px !important;
-        animation: none !important;
-        color: #fff !important;
-        padding: 26px 32px !important;
-        display: grid !important;
-        grid-template-columns: auto 1fr auto;
-        align-items: center;
-        gap: 18px;
-        margin: 30px 0 0 !important;
-    }
-    .main .block-container:has(.results-topbar) .next-step-hint * {
-        color: #fff !important;
-    }
-    .main .block-container:has(.results-topbar) .next-step-hint::before {
-        content: "✓";
-        width: 40px;
-        height: 40px;
-        border-radius: 8px;
-        background: rgba(255,255,255,.18);
-        display: grid;
-        place-items: center;
-        font-size: 22px;
-        font-weight: 900;
-    }
-    .main .block-container:has(.results-topbar) .next-step-hint::after {
-        content: "Run CDNR Matching";
-        background: #fff;
-        color: #0058be;
-        padding: 16px 34px;
-        border-radius: 8px;
-        font-weight: 900;
-        font-size: 18px;
-        white-space: nowrap;
-    }
     .tab-theme-head {
-        background: #fff;
-        border: 1px solid #c6c6cd;
-        border-radius: 8px;
-        padding: 24px 28px;
+        background: #131b2e;
+        border-radius: 12px;
+        padding: 18px 22px;
         margin-bottom: 18px;
-        color: #1b1b1d;
+        color: #fff;
     }
-    .tab-theme-title { font-size: 18px; font-weight: 900; color: #1b1b1d; letter-spacing: .08em; text-transform: uppercase; }
-    .tab-theme-sub { font-size: 13px; color: #45464d; margin-top: 4px; }
+    .tab-theme-title { font-size: 18px; font-weight: 900; color: #fff; }
+    .tab-theme-sub { font-size: 12px; color: #bec6e0; margin-top: 2px; }
     .stTabs [data-baseweb="tab-list"] {
         border: 1px solid #c6c6cd !important;
-        border-radius: 8px !important;
+        border-radius: 10px !important;
         padding: 6px !important;
         background: #fff !important;
-        margin-bottom: 20px !important;
     }
     .stTabs [data-baseweb="tab"][aria-selected="true"] {
         background: #2170e4 !important;
         color: #fff !important;
     }
     @media (max-width: 1100px) {
-        .main .block-container:has(.results-topbar) { padding-left: 20px !important; padding-right: 20px !important; }
-        .results-topbar { margin-left: -20px; margin-right: -20px; }
-        .results-sidenav { position: static; width: auto; margin: -20px 0 20px; border: 1px solid #c6c6cd; border-radius: 8px; }
         .results-client-row, .results-score-grid { grid-template-columns: 1fr; }
         .results-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .results-nav { display: none; }
@@ -2286,28 +2178,6 @@ elif st.session_state.app_stage == 'results':
         <div class="results-avatar"></div>
       </div>
     </div>
-    <aside class="results-sidenav">
-      <div class="results-side-client">
-        <div class="results-side-name">{st.session_state['meta_name']}</div>
-        <div class="results-side-fy">FY {st.session_state['meta_fy']}</div>
-      </div>
-      <div class="results-side-nav">
-        <div class="results-side-item active"><span class="results-side-icon">▦</span><span>Dashboard &amp; Scorecard</span></div>
-        <div class="results-side-item"><span class="results-side-icon">⇄</span><span>CDNR Matching</span></div>
-        <div class="results-side-item"><span class="results-side-icon">⇩</span><span>Downloads Hub</span></div>
-        <div class="results-side-item"><span class="results-side-icon">▤</span><span>Detailed Data</span></div>
-        <div class="results-side-item"><span class="results-side-icon">♟</span><span>Supplier Wise</span></div>
-        <div class="results-side-item"><span class="results-side-icon">☷</span><span>Manual Matcher</span></div>
-        <div class="results-side-item"><span class="results-side-icon">✉</span><span>Send Notice</span></div>
-        <div class="results-side-item"><span class="results-side-icon">✓</span><span>Follow-up Tracker</span></div>
-        <div class="results-side-item"><span class="results-side-icon">↶</span><span>Backup &amp; Restore</span></div>
-        <div class="results-side-item"><span class="results-side-icon">⚙</span><span>Settings</span></div>
-      </div>
-      <div class="results-side-footer">
-        <div class="results-side-item"><span class="results-side-icon">☏</span><span>Support</span></div>
-        <div class="results-side-item"><span class="results-side-icon">☰</span><span>User Guide</span></div>
-      </div>
-    </aside>
     <div class="results-client-row">
       <div class="results-client-card">
         <div class="results-client-name">{st.session_state['meta_name']}</div>
@@ -2516,7 +2386,7 @@ elif st.session_state.app_stage == 'results':
             </div>"""
 
         st.markdown(f"""
-        <div style="display:none">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
           {_kpi('Total Invoices', f'{_total_inv:,}')}
           {_kpi('✅ Matched', f'{_matched:,}', '#FFF8E1', '#C89000', '#7A5200')}
           {_kpi('❌ Not in GSTR-2B', f'{_not_in_2b_count:,}', '#FEF0ED', '#A82C18', '#D63920')}
@@ -2547,7 +2417,7 @@ elif st.session_state.app_stage == 'results':
                     f'<div style="height:100%;border-radius:50px;width:{pct}%;background:{color}"></div></div>'
                 )
             st.markdown(f"""
-            <div style="display:none">
+            <div style="background:#fff;border-radius:20px;padding:20px;box-shadow:0 4px 24px rgba(0,0,0,.07)">
               <div style="font-size:13px;font-weight:700;color:#1B2035;margin-bottom:14px">Match Rate by Status</div>
               <div style="display:flex;align-items:center;gap:20px">
                 <div style="position:relative;flex-shrink:0">
@@ -2595,14 +2465,14 @@ elif st.session_state.app_stage == 'results':
                         f'<div style="font-size:12px;font-weight:800;color:#D63920;white-space:nowrap">{_val}</div></div>'
                     )
                 st.markdown(f"""
-                <div style="display:none">
+                <div style="background:#fff;border-radius:20px;padding:20px;box-shadow:0 4px 24px rgba(0,0,0,.07)">
                   <div style="font-size:13px;font-weight:700;color:#1B2035;margin-bottom:14px">🚨 Risk Radar — Top Vendors</div>
                   {_risk_rows}
                 </div>
                 """, unsafe_allow_html=True)
             else:
                 st.markdown(f"""
-                <div style="display:none">
+                <div style="background:#EDFAF3;border-radius:20px;padding:24px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.07)">
                   <div style="font-size:28px;margin-bottom:8px">✅</div>
                   <div style="font-size:13px;font-weight:800;color:#18895A">All Clear!</div>
                   <div style="font-size:11px;color:#A8ABBB;margin-top:4px">No vendors with missing B2B invoices</div>
@@ -2610,64 +2480,6 @@ elif st.session_state.app_stage == 'results':
                 """, unsafe_allow_html=True)
 
         # ── Data Confidence panel ─────────────────────────────────────────────
-        _circ_ref = 251.2
-        _offset_ref = _circ_ref - (_match_pct / 100 * _circ_ref)
-        _risk_rows_ref = ""
-        if not_in_2b.empty:
-            risk_df_ref = not_in_2b.groupby('Name of Party').agg(
-                Missing_Count=('GSTIN','count'), Total_Value=('Final_Taxable','sum')
-            ).reset_index().sort_values('Total_Value', ascending=False).head(5)
-            _max_risk_ref = float(risk_df_ref['Total_Value'].max())
-            for _ri, (_, _r) in enumerate(risk_df_ref.iterrows(), 1):
-                _rk_pct = int(_r['Total_Value'] / max(_max_risk_ref, 1) * 100)
-                _bar_c = '#ba1a1a' if _ri <= 2 else '#f59e0b'
-                _risk_rows_ref += (
-                    f'<div class="results-risk-row">'
-                    f'<div class="results-risk-rank">{_ri}</div>'
-                    f'<div><div class="results-risk-name">{str(_r["Name of Party"])[:28].upper()}</div>'
-                    f'<div class="results-risk-sub">{int(_r["Missing_Count"])} invoices missing from GSTR-2B</div></div>'
-                    f'<div><div class="results-risk-amount">&#8377;{_r["Total_Value"]:,.0f}</div>'
-                    f'<div style="height:4px;background:#f1f5f9;border-radius:20px;margin-top:8px;overflow:hidden">'
-                    f'<div style="height:100%;width:{_rk_pct}%;background:{_bar_c};border-radius:20px"></div></div></div>'
-                    f'</div>'
-                )
-        else:
-            _risk_rows_ref = '<div style="height:260px;display:grid;place-items:center;text-align:center;color:#05943c"><div><div style="font-size:32px">✓</div><b>All Clear</b><br><span style="color:#45464d;font-size:12px">No vendors with missing B2B invoices</span></div></div>'
-
-        st.markdown(f"""
-        <div class="results-score-grid">
-          <div class="results-panel">
-            <div class="results-panel-title">⊕ Match Rate by Status</div>
-            <div style="display:flex;align-items:center;justify-content:center;gap:34px;min-height:260px">
-              <div style="position:relative;width:150px;height:150px">
-                <svg width="150" height="150" viewBox="0 0 100 100" style="transform:rotate(-90deg)">
-                  <circle cx="50" cy="50" r="40" fill="transparent" stroke="#e4e2e4" stroke-width="12"></circle>
-                  <circle cx="50" cy="50" r="40" fill="transparent" stroke="#0058be" stroke-width="12"
-                    stroke-dasharray="{_circ_ref}" stroke-dashoffset="{_offset_ref}" stroke-linecap="round"></circle>
-                </svg>
-                <div style="position:absolute;inset:0;display:grid;place-items:center;text-align:center">
-                  <div><div style="font-size:36px;font-weight:900;color:#111">{_match_pct}%</div><div style="font-size:12px;text-transform:uppercase;color:#45464d">Matched</div></div>
-                </div>
-              </div>
-              <div style="display:grid;gap:12px;font-size:15px;color:#111">
-                <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0058be;margin-right:10px"></span>Matched&nbsp; <b>{_matched:,}</b></div>
-                <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ba1a1a;margin-right:10px"></span>Not in 2B&nbsp; <b>{_not_in_2b_count:,}</b></div>
-                <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b;margin-right:10px"></span>Mismatch&nbsp; <b>{_mismatch:,}</b></div>
-              </div>
-            </div>
-          </div>
-          <div class="results-status-stack">
-            <div class="results-status-tile good"><div class="results-status-label">Matched</div><div class="results-status-value">{_matched:,}</div><div class="results-status-tile-icon">✓</div></div>
-            <div class="results-status-tile bad"><div class="results-status-label">Not in GSTR-2B</div><div class="results-status-value">{_not_in_2b_count:,}</div><div class="results-status-tile-icon">!</div></div>
-            <div class="results-status-tile warn"><div class="results-status-label">Value Mismatch</div><div class="results-status-value">{_mismatch:,}</div><div class="results-status-tile-icon">△</div></div>
-          </div>
-          <div class="results-panel">
-            <div class="results-panel-title">◎ Risk Radar — Top Vendors</div>
-            {_risk_rows_ref}
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-
         b_sum = st.session_state.get('data_summary_books')
         g_sum = st.session_state.get('data_summary_gst')
         if b_sum or g_sum:
