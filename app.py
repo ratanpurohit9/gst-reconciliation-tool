@@ -421,6 +421,135 @@ st.markdown("""
     .section-hdr { font-size: 14px; font-weight: 800; color: var(--navy); margin: 0 0 3px 0; }
     .section-sub { font-size: 11px; color: var(--t3); margin-bottom: 14px; }
 
+    /* Reconciliation workspace refresh */
+    .recon-shell {
+        margin: -6px -8px 18px;
+        background:
+            radial-gradient(circle at 5% 8%, rgba(216,226,255,.24), transparent 26%),
+            radial-gradient(circle at 92% 82%, rgba(252,222,181,.20), transparent 28%),
+            #fcf8fa;
+        border: 1px solid #e4e2e4;
+        border-radius: 14px;
+        padding: 22px 28px 28px;
+        position: relative;
+        overflow: hidden;
+    }
+    .recon-shell::before,
+    .recon-shell::after {
+        font-family: "DM Sans", sans-serif;
+        position: absolute;
+        color: rgba(27,27,29,.035);
+        font-size: 220px;
+        font-weight: 900;
+        line-height: 1;
+        pointer-events: none;
+    }
+    .recon-shell::before { content: "₹"; left: 24px; bottom: -64px; }
+    .recon-shell::after { content: "%"; right: 48px; top: 120px; transform: rotate(-12deg); }
+    .recon-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 24px;
+        position: relative;
+        z-index: 1;
+    }
+    .recon-titlebar { display: flex; align-items: center; gap: 14px; }
+    .recon-title-icon {
+        width: 44px; height: 44px; border-radius: 6px;
+        background: #ba1a1a; color: #fff; display: grid; place-items: center;
+        font-size: 22px; font-weight: 900;
+    }
+    .recon-title { font-size: 24px; font-weight: 900; color: #0f172a; letter-spacing: -0.01em; }
+    .recon-version {
+        background: #e4e2e4; color: #45464d; padding: 3px 9px;
+        border-radius: 5px; font-size: 11px; font-weight: 900; letter-spacing: .08em;
+        text-transform: uppercase; margin-left: 8px;
+    }
+    .recon-subtitle { font-size: 13px; color: #45464d; margin-top: 2px; }
+    .recon-stepper {
+        display: flex; align-items: center; gap: 28px;
+        margin: 12px 0 30px;
+        position: relative; z-index: 1;
+    }
+    .recon-step { display: flex; align-items: center; gap: 12px; color: #45464d; font-size: 15px; }
+    .recon-step.active { color: #1b1b1d; font-weight: 800; }
+    .recon-step-num {
+        width: 40px; height: 40px; border-radius: 999px;
+        display: grid; place-items: center;
+        border: 1px solid #c6c6cd; background: rgba(255,255,255,.72);
+        font-size: 14px;
+    }
+    .recon-step.active .recon-step-num {
+        background: #1b1b1d; color: #fff; border-color: #1b1b1d;
+        box-shadow: 0 0 0 6px rgba(27,27,29,.08);
+    }
+    .recon-step-line { width: 64px; height: 1px; background: #c6c6cd; }
+    .recon-card {
+        background: rgba(255,255,255,.84);
+        backdrop-filter: blur(8px);
+        border: 1px solid #e4e2e4;
+        border-radius: 10px;
+        padding: 20px 24px;
+        box-shadow: 0 10px 18px -16px rgba(15,23,42,.28);
+        position: relative;
+        z-index: 1;
+    }
+    .recon-field-label {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 12px; font-weight: 900; letter-spacing: .08em;
+        color: #1b1b1d; text-transform: uppercase; margin-bottom: 10px;
+    }
+    .upload-zone-title {
+        display: flex; align-items: center; gap: 10px;
+        color: #111827; font-size: 18px; font-weight: 900;
+        margin: 20px 0 10px;
+    }
+    .upload-zone-title .pill {
+        background: #f0edef; color: #76777d; border-radius: 6px;
+        padding: 4px 10px; font-size: 11px; font-weight: 700;
+    }
+    .upload-frame {
+        border: 2px dashed #c6c6cd;
+        border-radius: 12px;
+        min-height: 150px;
+        padding: 22px;
+        background: rgba(255,255,255,.62);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .upload-frame:hover { border-color: #2170e4; background: #fff; }
+    .recon-confidence-head {
+        display: flex; align-items: center; gap: 14px;
+        margin-bottom: 16px; position: relative; z-index: 1;
+    }
+    .recon-confidence-icon, .recon-settings-icon {
+        width: 42px; height: 42px; border-radius: 8px;
+        display: grid; place-items: center; color: #fff; font-weight: 900;
+    }
+    .recon-confidence-icon { background: #0058be; }
+    .recon-settings-icon { background: #1b1b1d; }
+    .recon-panel-title { font-size: 18px; font-weight: 900; color: #111827; }
+    .recon-panel-sub { font-size: 13px; color: #45464d; }
+    .confidence-box, .confidence-box-gst {
+        background: rgba(255,255,255,.92) !important;
+        border: 1px solid #e4e2e4 !important;
+        border-radius: 12px !important;
+        padding: 18px 20px !important;
+        box-shadow: 0 10px 18px -16px rgba(15,23,42,.3);
+        min-height: 128px;
+    }
+    .confidence-title, .confidence-title-gst {
+        color: #111827 !important; letter-spacing: .16em; text-transform: uppercase;
+        font-size: 11px !important; margin-bottom: 14px !important;
+    }
+    .recon-run-wrap {
+        max-width: 460px;
+        margin: 24px auto 0;
+    }
+
     /* Overdue alert sidebar */
     .overdue-alert { background: rgba(214,57,32,.18); border-radius: 10px; padding: 10px 12px; margin: 6px 0; }
     .overdue-text { font-size: 11px; font-weight: 700; color: #FCA5A5 !important; }
@@ -942,43 +1071,46 @@ if st.session_state.get('show_merger', False):
 
 if st.session_state.app_stage == 'setup':
 
-    # Step wizard header
-    st.markdown(f"""
-    <div style="background:#fff;border-radius:20px;padding:16px 24px;display:flex;align-items:center;
-                gap:0;margin-bottom:16px;box-shadow:0 4px 24px rgba(0,0,0,.07)">
-      <div style="display:flex;align-items:center;gap:9px">
-        <div style="width:28px;height:28px;border-radius:50%;background:#1B2035;color:#fff;display:grid;place-items:center;font-size:11px;font-weight:800">1</div>
-        <span style="font-size:12px;font-weight:700;color:#1B2035">Upload Files</span>
+    # Reconciliation workspace header
+    st.markdown("""
+    <div class="recon-shell">
+      <div class="recon-top">
+        <div class="recon-titlebar">
+          <div class="recon-title-icon">✓</div>
+          <div>
+            <div><span class="recon-title">GST Reconciliation Tool</span><span class="recon-version">Enterprise v9.0</span></div>
+            <div class="recon-subtitle">Automated B2B · B2BA · CDNR Matching &amp; Compliance Reporting</div>
+          </div>
+        </div>
       </div>
-      <div style="flex:1;height:2px;background:#EDEAE4;margin:0 12px"></div>
-      <div style="display:flex;align-items:center;gap:9px">
-        <div style="width:28px;height:28px;border-radius:50%;background:#EDEAE4;color:#A8ABBB;display:grid;place-items:center;font-size:11px;font-weight:800">2</div>
-        <span style="font-size:12px;font-weight:600;color:#A8ABBB">Column Mapping</span>
+      <div class="recon-stepper">
+        <div class="recon-step active"><span class="recon-step-num">1</span><span>Upload Files</span></div>
+        <div class="recon-step-line"></div>
+        <div class="recon-step"><span class="recon-step-num">2</span><span>Column Mapping</span></div>
+        <div class="recon-step-line"></div>
+        <div class="recon-step"><span class="recon-step-num">3</span><span>Settings &amp; Run</span></div>
       </div>
-      <div style="flex:1;height:2px;background:#EDEAE4;margin:0 12px"></div>
-      <div style="display:flex;align-items:center;gap:9px">
-        <div style="width:28px;height:28px;border-radius:50%;background:#EDEAE4;color:#A8ABBB;display:grid;place-items:center;font-size:11px;font-weight:800">3</div>
-        <span style="font-size:12px;font-weight:600;color:#A8ABBB">Settings &amp; Run</span>
-      </div>
-    </div>
     """, unsafe_allow_html=True)
 
     with st.container():
         # ── Software selector (compact) ───────────────────────────────────────
         software_names = list(SOFTWARE_COLUMN_PROFILES.keys())
+        st.markdown('<div class="recon-card"><div class="recon-field-label">▣ Accounting Software</div>', unsafe_allow_html=True)
         selected_software = st.selectbox(
             "📋 Accounting Software (for auto column-mapping)",
             software_names,
             index=software_names.index(st.session_state.get('software_profile', software_names[0]))
                   if st.session_state.get('software_profile') in software_names else 0,
             key="software_profile",
-            help="Columns are auto-mapped based on your software's export format."
+            help="Columns are auto-mapped based on your software's export format.",
+            label_visibility="collapsed"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
         software_profile = SOFTWARE_COLUMN_PROFILES[selected_software]
 
         # ── File Upload — clean, focused ──────────────────────────────────────
         st.markdown(f"""
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0 6px">
+        <div style="display:none">
           <div style="background:#FFF8E1;border:2px solid #F2C521;border-radius:14px;padding:16px 18px">
             <div style="font-size:13px;font-weight:800;color:#7A5200;margin-bottom:4px">📚 Purchase Register</div>
             <div style="font-size:11px;color:#C89000">From {selected_software}</div>
@@ -992,11 +1124,25 @@ if st.session_state.app_stage == 'setup':
 
         col1, col2 = st.columns(2)
         with col1:
+            st.markdown(f"""
+            <div class="upload-zone-title">▤ Purchase Register <span class="pill">Books Data</span></div>
+            <div class="upload-frame">
+            """, unsafe_allow_html=True)
             file_books = st.file_uploader("Purchase Register", type=['xlsx','csv'],
                                           key="b_up", label_visibility="collapsed")
+            st.caption(f"From {selected_software} · XLSX, CSV supported")
+            st.markdown("</div>", unsafe_allow_html=True)
         with col2:
+            st.markdown("""
+            <div class="upload-zone-title">▥ GSTR-2B Portal Data <span class="pill">NIC Format</span></div>
+            <div class="upload-frame">
+            """, unsafe_allow_html=True)
             file_gst   = st.file_uploader("GSTR-2B Portal Data", type=['xlsx','csv'],
                                           key="g_up", label_visibility="collapsed")
+            st.caption("Download from GST Portal · XLSX, CSV supported")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if file_books and file_gst:
 
