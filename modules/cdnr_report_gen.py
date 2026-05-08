@@ -1,4 +1,4 @@
-# modules/cdnr_report_gen.py
+﻿# modules/cdnr_report_gen.py
 import io
 import numpy as np
 import pandas as pd
@@ -78,7 +78,7 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
         'sum_head' :_f(bold=True,bg_color='#4472C4',font_color='white',border=1,align='center',valign='vcenter',text_wrap=True),
         'sum_yellow':_f(bold=True,bg_color='#FFD966',border=1,align='left',valign='vcenter'),
         'sum_label' :_f(bg_color='#F2F2F2',border=1,align='left',valign='vcenter'),
-        'sum_val'   :_f(border=1,align='right',valign='vcenter',num_format='#,##0.00'),
+        'sum_val'   :_f(border=1,align='right',valign='vcenter',num_format='₹ #,##0.00'),
         'sum_cnt'   :_f(border=1,align='center',valign='vcenter',num_format='#,##0'),
     }
 
@@ -128,20 +128,20 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
 
     FBK_T=_f(bold=True,bg_color='#2E7D32',font_color='white',border=1,align='center',valign='vcenter',font_size=10)
     FBK_L=_f(bg_color='#E8F5E9',font_color='#1B5E20',border=1,align='left',valign='vcenter',font_size=9)
-    FBK_V=_f(bg_color='#E8F5E9',font_color='#37474F',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FBK_V=_f(bg_color='#E8F5E9',font_color='#37474F',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
     FBK_TL=_f(bold=True,bg_color='#C8E6C9',font_color='#1B5E20',border=1,align='left',valign='vcenter',font_size=9)
-    FBK_TV=_f(bold=True,bg_color='#C8E6C9',font_color='#1B5E20',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FBK_TV=_f(bold=True,bg_color='#C8E6C9',font_color='#1B5E20',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
     FGT_T=_f(bold=True,bg_color='#1565C0',font_color='white',border=1,align='center',valign='vcenter',font_size=10)
     FGT_L=_f(bg_color='#E3F2FD',font_color='#0D47A1',border=1,align='left',valign='vcenter',font_size=9)
-    FGT_V=_f(bg_color='#E3F2FD',font_color='#37474F',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FGT_V=_f(bg_color='#E3F2FD',font_color='#37474F',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
     FGT_NA=_f(bg_color='#E3F2FD',font_color='#9E9E9E',border=1,align='center',valign='vcenter',font_size=9,italic=True)
     FGT_TL=_f(bold=True,bg_color='#BBDEFB',font_color='#0D47A1',border=1,align='left',valign='vcenter',font_size=9)
-    FGT_TV=_f(bold=True,bg_color='#BBDEFB',font_color='#0D47A1',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FGT_TV=_f(bold=True,bg_color='#BBDEFB',font_color='#0D47A1',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
     FDF_T=_f(bold=True,bg_color='#37474F',font_color='white',border=1,align='center',valign='vcenter',font_size=10)
     FDF_L=_f(bg_color='#FFF9C4',font_color='#37474F',border=1,align='left',valign='vcenter',font_size=9)
-    FDF_PL=_f(bold=True,bg_color='#DCEDC8',font_color='#2E7D32',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FDF_NG=_f(bold=True,bg_color='#FFCDD2',font_color='#C62828',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FDF_ZR=_f(bold=True,bg_color='#FFF9C4',font_color='#757575',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FDF_PL=_f(bold=True,bg_color='#DCEDC8',font_color='#2E7D32',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
+    FDF_NG=_f(bold=True,bg_color='#FFCDD2',font_color='#C62828',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
+    FDF_ZR=_f(bold=True,bg_color='#FFF9C4',font_color='#757575',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
     FHDR=_f(bold=True,bg_color='#0D47A1',font_color='white',border=1,align='center',valign='vcenter',font_size=9)
     FNOTE=_f(italic=True,font_color='#607D8B',font_size=8,align='left',valign='vcenter',text_wrap=True)
 
@@ -222,7 +222,7 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
             if k in str(status): bg,fc=b,f; break
         kw=dict(bg_color=bg,font_color=fc,border=1,valign='vcenter',font_size=9)
         if bold: kw['bold']=True
-        if num:  kw['num_format']='#,##0.00'; kw['align']='right'
+        if num:  kw['num_format']='₹ #,##0.00'; kw['align']='right'
         else:    kw['align']='left'
         return _f(**kw)
     def _spri(s):
@@ -336,9 +336,9 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
             bg,fc='#FFFFFF','#37474F'
             for k,(b,fcc) in _SFMT.items():
                 if k in st2: bg,fc=b,fcc; break
-            if   v > 0.5: return _f(bold=True,bg_color=bg,font_color='#C00000',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-            elif v <-0.5: return _f(bold=True,bg_color=bg,font_color='#2E7D32',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-            return _f(bg_color=bg,font_color='#757575',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+            if   v > 0.5: return _f(bold=True,bg_color=bg,font_color='#C00000',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
+            elif v <-0.5: return _f(bold=True,bg_color=bg,font_color='#2E7D32',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
+            return _f(bg_color=bg,font_color='#757575',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
 
         ws_sum.write(er,17, d_tax, _df2(d_tax, st))
         ws_sum.write(er,18, d_gst, _df2(d_gst, st))
@@ -346,7 +346,7 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
 
     total_rows = len(df_reco)
     tot_r = data_start + total_rows
-    FTOT  = _f(bold=True,bg_color='#1F3864',font_color='white',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FTOT  = _f(bold=True,bg_color='#1F3864',font_color='white',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
     FTOT_L= _f(bold=True,bg_color='#1F3864',font_color='white',border=1,align='center',valign='vcenter',font_size=9)
     ws_sum.merge_range(tot_r,0,tot_r,5,'TOTALS',FTOT_L)
     def _cs2(c): return float(full_df[c].fillna(0).sum()) if c in full_df.columns else 0.0
@@ -430,3 +430,5 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
 
     writer.close()
     return output.getvalue()
+
+

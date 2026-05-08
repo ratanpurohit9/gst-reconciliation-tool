@@ -1,4 +1,4 @@
-# modules/report_gen.py
+﻿# modules/report_gen.py
 import pandas as pd
 import io
 import xlsxwriter
@@ -63,13 +63,13 @@ def generate_vendor_split_zip(full_df):
                 for st,(bg,fc_c) in STATUS_ROW_COLORS.items():
                     row_fmts[st] = {
                         'normal': wb.add_format({'bg_color':bg,'border':1,'valign':'vcenter'}),
-                        'number': wb.add_format({'bg_color':bg,'border':1,'valign':'vcenter','num_format':'#,##0.00'}),
-                        'bold':   wb.add_format({'bg_color':bg,'border':1,'valign':'vcenter','bold':True,'num_format':'#,##0.00','font_color':fc_c}),
+                        'number': wb.add_format({'bg_color':bg,'border':1,'valign':'vcenter','num_format':'₹ #,##0.00'}),
+                        'bold':   wb.add_format({'bg_color':bg,'border':1,'valign':'vcenter','bold':True,'num_format':'₹ #,##0.00','font_color':fc_c}),
                     }
                 default_fmts = {
                     'normal': wb.add_format({'border':1,'valign':'vcenter'}),
-                    'number': wb.add_format({'border':1,'valign':'vcenter','num_format':'#,##0.00'}),
-                    'bold':   wb.add_format({'border':1,'valign':'vcenter','bold':True,'num_format':'#,##0.00'}),
+                    'number': wb.add_format({'border':1,'valign':'vcenter','num_format':'₹ #,##0.00'}),
+                    'bold':   wb.add_format({'border':1,'valign':'vcenter','bold':True,'num_format':'₹ #,##0.00'}),
                 }
                 # Header row 1: group labels
                 ws.merge_range(0,0,0,1,'INVOICE DETAILS',fmt_info_hdr)
@@ -172,20 +172,20 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
 
     FBK_T =_f(bold=True,bg_color='#2E7D32',font_color='white',border=1,align='center',valign='vcenter',font_size=10)
     FBK_L =_f(bg_color='#E8F5E9',font_color='#1B5E20',border=1,align='left',valign='vcenter',font_size=9)
-    FBK_V =_f(bg_color='#E8F5E9',font_color='#37474F',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FBK_V =_f(bg_color='#E8F5E9',font_color='#37474F',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
     FBK_TL=_f(bold=True,bg_color='#C8E6C9',font_color='#1B5E20',border=1,align='left',valign='vcenter',font_size=9)
-    FBK_TV=_f(bold=True,bg_color='#C8E6C9',font_color='#1B5E20',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FBK_TV=_f(bold=True,bg_color='#C8E6C9',font_color='#1B5E20',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
     FGT_T =_f(bold=True,bg_color='#1565C0',font_color='white',border=1,align='center',valign='vcenter',font_size=10)
     FGT_L =_f(bg_color='#E3F2FD',font_color='#0D47A1',border=1,align='left',valign='vcenter',font_size=9)
-    FGT_V =_f(bg_color='#E3F2FD',font_color='#37474F',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FGT_V =_f(bg_color='#E3F2FD',font_color='#37474F',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
     FGT_NA=_f(bg_color='#E3F2FD',font_color='#9E9E9E',border=1,align='center',valign='vcenter',font_size=9,italic=True)
     FGT_TL=_f(bold=True,bg_color='#BBDEFB',font_color='#0D47A1',border=1,align='left',valign='vcenter',font_size=9)
-    FGT_TV=_f(bold=True,bg_color='#BBDEFB',font_color='#0D47A1',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FGT_TV=_f(bold=True,bg_color='#BBDEFB',font_color='#0D47A1',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
     FDF_T =_f(bold=True,bg_color='#37474F',font_color='white',border=1,align='center',valign='vcenter',font_size=10)
     FDF_L =_f(bg_color='#FFF9C4',font_color='#37474F',border=1,align='left',valign='vcenter',font_size=9)
-    FDF_PL=_f(bold=True,bg_color='#DCEDC8',font_color='#2E7D32',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FDF_NG=_f(bold=True,bg_color='#FFCDD2',font_color='#C62828',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-    FDF_ZR=_f(bold=True,bg_color='#FFF9C4',font_color='#757575',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FDF_PL=_f(bold=True,bg_color='#DCEDC8',font_color='#2E7D32',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
+    FDF_NG=_f(bold=True,bg_color='#FFCDD2',font_color='#C62828',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
+    FDF_ZR=_f(bold=True,bg_color='#FFF9C4',font_color='#757575',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
     FHDR  =_f(bold=True,bg_color='#0D47A1',font_color='white',border=1,align='center',valign='vcenter',font_size=9)
     FNOTE =_f(italic=True,font_color='#607D8B',font_size=8,align='left',valign='vcenter',text_wrap=True)
 
@@ -303,7 +303,7 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
             if k in str(status): bg,fc=b,f; break
         kw=dict(bg_color=bg,font_color=fc,border=1,valign='vcenter',font_size=9)
         if bold: kw['bold']=True
-        if num:  kw['num_format']='#,##0.00'; kw['align']='right'
+        if num:  kw['num_format']='₹ #,##0.00'; kw['align']='right'
         else:    kw['align']='left'
         return _f(**kw)
     def _status_priority(s):
@@ -429,9 +429,9 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
             bg,fc = '#FFFFFF','#37474F'
             for k,(b,f) in _STATUS_FMT.items():
                 if k in stat: bg,fc=b,f; break
-            if   v > 0.5:  return _f(bold=True,bg_color=bg,font_color='#C00000',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-            elif v < -0.5: return _f(bold=True,bg_color=bg,font_color='#2E7D32',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
-            else:           return _f(bg_color=bg,font_color='#757575',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+            if   v > 0.5:  return _f(bold=True,bg_color=bg,font_color='#C00000',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
+            elif v < -0.5: return _f(bold=True,bg_color=bg,font_color='#2E7D32',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
+            else:           return _f(bg_color=bg,font_color='#757575',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
 
         ws_sum.write(excel_row, 15, d_tax, _diff_fmt(d_tax,  status))
         ws_sum.write(excel_row, 16, d_gst, _diff_fmt(d_gst,  status))
@@ -444,7 +444,7 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
 
     # ── Totals row ────────────────────────────────────────────────────────────
     tot_row = data_start_row + total_data_rows
-    FTOT = _f(bold=True,bg_color='#1F3864',font_color='white',border=1,align='right',valign='vcenter',font_size=9,num_format='#,##0.00')
+    FTOT = _f(bold=True,bg_color='#1F3864',font_color='white',border=1,align='right',valign='vcenter',font_size=9,num_format='₹ #,##0.00')
     FTOT_L = _f(bold=True,bg_color='#1F3864',font_color='white',border=1,align='center',valign='vcenter',font_size=9)
     ws_sum.merge_range(tot_row,0,tot_row,4,'TOTALS',FTOT_L)
     def _col_sum(col):
@@ -547,3 +547,5 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
 
     writer.close()
     return output.getvalue()
+
+

@@ -17,8 +17,11 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import os as _os
 
-# Font chain: Segoe UI (₹ native) → DejaVuSans (₹ support) → Helvetica (fallback)
+# Font chain: Nirmala UI / Segoe UI / DejaVuSans (₹ support) → Helvetica (safe fallback)
 _BASE_FONT = _BASE_FONT_BOLD = None
+_CURRENCY_PREFIX = "\u20b9"
+_NIRMALA_REG = 'C:/Windows/Fonts/Nirmala.ttf'
+_NIRMALA_BOLD = 'C:/Windows/Fonts/NirmalaB.ttf'
 _SEGOE_REG  = 'C:/Windows/Fonts/segoeui.ttf'
 _SEGOE_BOLD = 'C:/Windows/Fonts/segoeuib.ttf'
 _DEJAVU_REG  = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
@@ -32,7 +35,10 @@ def _reg(name, bname, rpath, bpath):
         return True
     except: return False
 
-if _os.path.exists(_SEGOE_REG) and _os.path.exists(_SEGOE_BOLD):
+if _os.path.exists(_NIRMALA_REG) and _os.path.exists(_NIRMALA_BOLD):
+    if _reg('NirmalaUI','NirmalaUI-Bold', _NIRMALA_REG, _NIRMALA_BOLD):
+        _BASE_FONT, _BASE_FONT_BOLD = 'NirmalaUI', 'NirmalaUI-Bold'
+if not _BASE_FONT and _os.path.exists(_SEGOE_REG) and _os.path.exists(_SEGOE_BOLD):
     if _reg('SegoeUI','SegoeUI-Bold', _SEGOE_REG, _SEGOE_BOLD):
         _BASE_FONT, _BASE_FONT_BOLD = 'SegoeUI', 'SegoeUI-Bold'
 if not _BASE_FONT and _os.path.exists(_DEJAVU_REG):
@@ -40,6 +46,7 @@ if not _BASE_FONT and _os.path.exists(_DEJAVU_REG):
         _BASE_FONT, _BASE_FONT_BOLD = 'DejaVu', 'DejaVu-Bold'
 if not _BASE_FONT:
     _BASE_FONT, _BASE_FONT_BOLD = 'Helvetica', 'Helvetica-Bold'
+    _CURRENCY_PREFIX = "Rs."
 
 # ─── Palette ──────────────────────────────────────────────────────────────────
 DARK_NAVY   = colors.HexColor("#1F3864")
@@ -56,12 +63,12 @@ TEXT_DARK   = colors.HexColor("#1A1A2E")
 
 STATUS_CONFIG = {
     "Invoices Not in GSTR-2B": {
-        "label":  "MISSING FROM GSTR-2B PORTAL",
+        "label":  "BILL NOT UPLOADED BY PARTY",
         "color":  ACCENT_RED,
         "bg":     BG_WARN,
         "icon":   "!",
-        "desc":   "Invoice recorded in our Purchase Books is NOT reflecting in GSTR-2B. This directly blocks our ITC claim under Section 16(2)(aa) of the CGST Act, 2017.",
-        "action": "Kindly upload this invoice in your GSTR-1 at the earliest and confirm once done.",
+        "desc":   "Bill recorded in our Purchase Books has not been uploaded by your party and is therefore not appearing in GSTR-2B.",
+        "action": "Kindly upload this pending bill in your GSTR-1 at the earliest and confirm once done.",
     },
     "Invoices Not in Purchase Books": {
         "label":  "UNIDENTIFIED PORTAL ENTRY",
@@ -180,7 +187,7 @@ def fc(val, show_zero=False, abs_val=False):
                 grps.append(rest)
             grps.reverse()
             n = ','.join(grps) + ',' + last3
-        result = f"\u20b9{n}.{parts[1]}"
+        result = f"{_CURRENCY_PREFIX}{n}.{parts[1]}"
         return f"-{result}" if neg else result
     except:
         return "-"

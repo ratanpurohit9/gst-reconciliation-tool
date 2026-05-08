@@ -1,4 +1,4 @@
-# modules/combined_report_gen.py
+﻿# modules/combined_report_gen.py
 # Combined B2B + CDNR Reconciliation Excel Report
 # Shows Executive Summary covering both, individual summary tabs, and all data sheets.
 
@@ -86,20 +86,20 @@ def generate_combined_excel(b2b_df, cdnr_df, company_gstin, company_name, fy, pe
     FSEC_D  = _f(bold=True, bg_color='#37474F', font_color='white', border=1,
                  align='center', valign='vcenter', font_size=10)
     FBK_L   = _f(bg_color='#E8F5E9', font_color='#1B5E20', border=1, align='left', valign='vcenter', font_size=9)
-    FBK_V   = _f(bg_color='#E8F5E9', font_color='#37474F', border=1, align='right', valign='vcenter', font_size=9, num_format='#,##0.00')
+    FBK_V   = _f(bg_color='#E8F5E9', font_color='#37474F', border=1, align='right', valign='vcenter', font_size=9, num_format='₹ #,##0.00')
     FBK_TL  = _f(bold=True, bg_color='#C8E6C9', font_color='#1B5E20', border=1, align='left', valign='vcenter', font_size=9)
-    FBK_TV  = _f(bold=True, bg_color='#C8E6C9', font_color='#1B5E20', border=1, align='right', valign='vcenter', font_size=9, num_format='#,##0.00')
+    FBK_TV  = _f(bold=True, bg_color='#C8E6C9', font_color='#1B5E20', border=1, align='right', valign='vcenter', font_size=9, num_format='₹ #,##0.00')
     FGT_L   = _f(bg_color='#E3F2FD', font_color='#0D47A1', border=1, align='left', valign='vcenter', font_size=9)
-    FGT_V   = _f(bg_color='#E3F2FD', font_color='#37474F', border=1, align='right', valign='vcenter', font_size=9, num_format='#,##0.00')
+    FGT_V   = _f(bg_color='#E3F2FD', font_color='#37474F', border=1, align='right', valign='vcenter', font_size=9, num_format='₹ #,##0.00')
     FGT_NA  = _f(bg_color='#E3F2FD', font_color='#9E9E9E', border=1, align='center', valign='vcenter', font_size=9, italic=True)
     FGT_TL  = _f(bold=True, bg_color='#BBDEFB', font_color='#0D47A1', border=1, align='left', valign='vcenter', font_size=9)
-    FGT_TV  = _f(bold=True, bg_color='#BBDEFB', font_color='#0D47A1', border=1, align='right', valign='vcenter', font_size=9, num_format='#,##0.00')
+    FGT_TV  = _f(bold=True, bg_color='#BBDEFB', font_color='#0D47A1', border=1, align='right', valign='vcenter', font_size=9, num_format='₹ #,##0.00')
     FDF_L   = _f(bg_color='#FFF9C4', font_color='#37474F', border=1, align='left', valign='vcenter', font_size=9)
-    FDF_PL  = _f(bold=True, bg_color='#DCEDC8', font_color='#2E7D32', border=1, align='right', valign='vcenter', font_size=9, num_format='#,##0.00')
-    FDF_NG  = _f(bold=True, bg_color='#FFCDD2', font_color='#C62828', border=1, align='right', valign='vcenter', font_size=9, num_format='#,##0.00')
-    FDF_ZR  = _f(bold=True, bg_color='#FFF9C4', font_color='#757575', border=1, align='right', valign='vcenter', font_size=9, num_format='#,##0.00')
+    FDF_PL  = _f(bold=True, bg_color='#DCEDC8', font_color='#2E7D32', border=1, align='right', valign='vcenter', font_size=9, num_format='₹ #,##0.00')
+    FDF_NG  = _f(bold=True, bg_color='#FFCDD2', font_color='#C62828', border=1, align='right', valign='vcenter', font_size=9, num_format='₹ #,##0.00')
+    FDF_ZR  = _f(bold=True, bg_color='#FFF9C4', font_color='#757575', border=1, align='right', valign='vcenter', font_size=9, num_format='₹ #,##0.00')
     FNOTE   = _f(italic=True, font_color='#607D8B', font_size=8, align='left', valign='vcenter', text_wrap=True)
-    FTOT    = _f(bold=True, bg_color='#1F3864', font_color='white', border=1, align='right', valign='vcenter', font_size=9, num_format='#,##0.00')
+    FTOT    = _f(bold=True, bg_color='#1F3864', font_color='white', border=1, align='right', valign='vcenter', font_size=9, num_format='₹ #,##0.00')
     FTOT_L  = _f(bold=True, bg_color='#1F3864', font_color='white', border=1, align='center', valign='vcenter', font_size=9)
 
     def dfmt(v):
@@ -289,7 +289,7 @@ def _write_individual_sheet(wb, writer, df, sheet_name,
     FGRP_ST = _f(bold=True, bg_color='#4472C4', font_color='white', border=1, align='center', valign='vcenter', font_size=9)
     FHDR    = _f(bold=True, bg_color='#4472C4', font_color='white', border=1, align='center', valign='vcenter', font_size=8, text_wrap=True)
     FIDX    = _f(bg_color='#F5F5F5', font_color='#9E9E9E', border=1, align='center', valign='vcenter', font_size=8)
-    FTOT    = _f(bold=True, bg_color='#1F3864', font_color='white', border=1, align='right', valign='vcenter', font_size=9, num_format='#,##0.00')
+    FTOT    = _f(bold=True, bg_color='#1F3864', font_color='white', border=1, align='right', valign='vcenter', font_size=9, num_format='₹ #,##0.00')
     FTOT_L  = _f(bold=True, bg_color='#1F3864', font_color='white', border=1, align='center', valign='vcenter', font_size=9)
 
     _STATUS_COLORS = {
@@ -310,7 +310,7 @@ def _write_individual_sheet(wb, writer, df, sheet_name,
         kw = dict(bg_color=bg, font_color=fc, border=1, valign='vcenter', font_size=9)
         if bold: kw['bold'] = True
         kw['align'] = 'right' if num else 'left'
-        if num: kw['num_format'] = '#,##0.00'
+        if num: kw['num_format'] = '₹ #,##0.00'
         return _f(**kw)
 
     ws.write(0, 0, 'GSTIN:',      FMETA); ws.write(0, 1, gstin)
@@ -388,7 +388,7 @@ def _write_individual_sheet(wb, writer, df, sheet_name,
             for k, (b, fcc) in _STATUS_COLORS.items():
                 if k in status: bg, fc = b, fcc; break
             kw = dict(bg_color=bg, font_color='#C00000' if v > 0.5 else '#2E7D32' if v < -0.5 else '#757575',
-                      border=1, align='right', valign='vcenter', font_size=9, num_format='#,##0.00', bold=abs(v) > 0.5)
+                      border=1, align='right', valign='vcenter', font_size=9, num_format='₹ #,##0.00', bold=abs(v) > 0.5)
             return _f(**kw)
 
         ws.write(er, 15, d_tax, _df2(d_tax))
@@ -457,7 +457,7 @@ def _write_combined_issues(wb, writer, b2b_df, cdnr_df, gstin, name, fy, period)
             if k in str(status): bg, fc = b, fcc; break
         kw = dict(bg_color=bg, font_color=fc, border=1, valign='vcenter', font_size=9, bold=bold)
         kw['align'] = 'right' if num else 'left'
-        if num: kw['num_format'] = '#,##0.00'
+        if num: kw['num_format'] = '₹ #,##0.00'
         return _f(**kw)
 
     ws.write(0, 0, 'GSTIN:',      FMETA); ws.write(0, 1, gstin)
@@ -556,7 +556,7 @@ def _write_combined_issues(wb, writer, b2b_df, cdnr_df, gstin, name, fy, period)
         def _dfc(v):
             return _f(bold=abs(v)>0.5, bg_color='#FFF2F2' if v>0.5 else '#F0FFF4' if v<-0.5 else '#FAFAFA',
                       font_color='#C00000' if v>0.5 else '#166534' if v<-0.5 else '#757575',
-                      border=1, align='right', valign='vcenter', font_size=9, num_format='#,##0.00')
+                      border=1, align='right', valign='vcenter', font_size=9, num_format='₹ #,##0.00')
         ws.write(data_row, 16, dt, _dfc(dt))
         ws.write(data_row, 17, di, _dfc(di))
         ws.write(data_row, 18, dc, _dfc(dc))
@@ -571,3 +571,5 @@ def _write_combined_issues(wb, writer, b2b_df, cdnr_df, gstin, name, fy, period)
     ws.set_column(3, 3, 18); ws.set_column(4, 4, 16);  ws.set_column(5, 5, 12)
     ws.set_column(6, 9, 13); ws.set_column(10, 10, 16); ws.set_column(11, 11, 12)
     ws.set_column(12, 15, 13); ws.set_column(16, 19, 13); ws.set_column(20, 20, 28)
+
+
