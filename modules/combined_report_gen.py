@@ -264,6 +264,28 @@ def generate_combined_excel(b2b_df, cdnr_df, company_gstin, company_name, fy, pe
             cdnr_export[dc] = _safe_date(cdnr_export[dc])
     cdnr_export.to_excel(writer, sheet_name='CDNR All Data', index=False)
 
+    # SHEET 7 — Combined All Data (every B2B + CDNR row, irrespective of status)
+    b2b_all = b2b_df.copy()
+    b2b_all.insert(0, 'Module', 'B2B')
+    if 'Recon_Status' in b2b_all.columns:
+        b2b_all.insert(1, 'Combined Status', b2b_all['Recon_Status'])
+    else:
+        b2b_all.insert(1, 'Combined Status', '')
+
+    cdnr_all = cdnr_df.copy()
+    cdnr_all.insert(0, 'Module', 'CDNR')
+    _cdnr_status_col = 'Recon_Status_CDNR' if 'Recon_Status_CDNR' in cdnr_all.columns else 'Recon_Status'
+    if _cdnr_status_col in cdnr_all.columns:
+        cdnr_all.insert(1, 'Combined Status', cdnr_all[_cdnr_status_col])
+    else:
+        cdnr_all.insert(1, 'Combined Status', '')
+
+    combined_all = pd.concat([b2b_all, cdnr_all], ignore_index=True, sort=False)
+    for dc in ['Invoice Date_BOOKS', 'Invoice Date_GST', 'Note Date_BOOKS', 'Note Date_GST']:
+        if dc in combined_all.columns:
+            combined_all[dc] = _safe_date(combined_all[dc])
+    combined_all.to_excel(writer, sheet_name='Combined All Data', index=False)
+
     writer.close()
     return output.getvalue()
 

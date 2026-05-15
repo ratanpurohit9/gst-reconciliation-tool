@@ -100,6 +100,7 @@ import os
 import re
 import html
 import json
+import hashlib
 
 # --- CORE IMPORTS ---
 from modules.constants import (REQUIRED_FIELDS, FIXED_BOOKS_MAPPING, FIXED_GST_MAPPING,
@@ -1143,6 +1144,8 @@ defaults = {
     'vendor_tolerances':   {},
     'data_summary_books':  None,
     'data_summary_gst':    None,
+    'smart_mode':          True,
+    'old_itc_enabled':     True,
     'imp_wa_preview':      None,
     'wa_lang':             'en',   # WhatsApp language: 'en','hi','gu'
 }
@@ -1910,7 +1913,11 @@ if st.session_state.app_stage == 'setup':
 
         t1, t2, t3 = st.columns([1, 1, 2])
         with t1: tolerance_input = st.number_input("Global Tolerance (₹)", min_value=0.0, value=5.0, step=1.0, help="Default allowable difference for matching. Cannot be negative.")
-        with t2: smart_mode_input = st.checkbox("Enable Smart Suggestions (Fuzzy Logic)", value=False)
+        with t2:
+            smart_mode_input = st.checkbox(
+                "Enable Smart Suggestions (Fuzzy Logic)",
+                value=st.session_state.get('smart_mode', True)
+            )
 
         # Per-vendor tolerance
         with st.expander("⚙️ Per-Vendor Tolerance Overrides (Advanced)", expanded=False):
@@ -1991,7 +1998,7 @@ if st.session_state.app_stage == 'setup':
         with col_itc1:
             old_itc_enabled = st.toggle(
                 "🗓️ Enable Old ITC Detection",
-                value=st.session_state.get('old_itc_enabled', False),
+                value=st.session_state.get('old_itc_enabled', True),
                 key='old_itc_toggle',
                 help="If ON: any invoice in GSTR-2B whose date falls BEFORE the reconciliation period start date will be tagged as 'Old ITC (Previous Year)' instead of 'Not in Purchase Books'."
             )
@@ -2137,6 +2144,32 @@ elif st.session_state.app_stage == 'processing':
     st.session_state.current_client_path = get_client_path(meta['name'], meta['gstin'], meta['fy'], meta['period'])
     st.session_state['last_result'] = result
     log_action(recon_id, 'new_recon', {'invoices': len(result), 'tolerance': tol})
+
+    # Run CDNR automatically from the same uploaded files. This is fail-soft:
+    # B2B results continue even if the workbook has no CDNR sheet or CDNR parsing fails.
+    if st.session_state.get('file_books_bytes') is not None and st.session_state.get('file_gst_bytes') is not None:
+        try:
+            st.session_state.pop('auto_cdnr_error', None)
+            _cdnr_b_io = io.BytesIO(st.session_state['file_books_bytes'])
+            _cdnr_g_io = io.BytesIO(st.session_state['file_gst_bytes'])
+            _auto_cdnr_result, _auto_cdnr_summary = process_cdnr_reconciliation(
+                _cdnr_b_io,
+                _cdnr_g_io,
+                tolerance=tol,
+                smart_mode=smart,
+            )
+            if _auto_cdnr_result is not None and not _auto_cdnr_result.empty:
+                st.session_state.cdnr_result = _auto_cdnr_result
+                st.session_state.cdnr_summary = _auto_cdnr_summary
+                save_cdnr_to_history(recon_id, _auto_cdnr_result, _auto_cdnr_summary)
+                log_action(recon_id, 'cdnr_auto_run',
+                           {'matched': _auto_cdnr_summary.get('matched_count', 0),
+                            'not_in_2b': _auto_cdnr_summary.get('not_in_2b_count', 0)})
+        except Exception as _auto_cdnr_err:
+            st.session_state.cdnr_result = None
+            st.session_state.cdnr_summary = None
+            st.session_state['auto_cdnr_error'] = str(_auto_cdnr_err)
+
     st.session_state.app_stage = 'results'
     st.rerun()
 
@@ -2427,12 +2460,20 @@ elif st.session_state.app_stage == 'results':
         """, unsafe_allow_html=True)
 
         # ── Check for unknown names ─────────────────────────────────────────
-        _unknown_in_hub = []
-        for _name_df in [st.session_state.get('last_result'), st.session_state.get('cdnr_result')]:
+        _unknown_sources = {}
+        _missing_name_tokens = {'', 'nan', 'none', 'unknown'}
+        for _source_label, _name_df in [
+            ('B2B', st.session_state.get('last_result')),
+            ('CDNR', st.session_state.get('cdnr_result')),
+        ]:
             if _name_df is not None and 'Name of Party' in _name_df.columns and 'GSTIN' in _name_df.columns:
-                _unk_mask = _name_df['Name of Party'].isin(['Unknown', '', 'nan', 'UNKNOWN']) | _name_df['Name of Party'].isna()
-                _unknown_in_hub.extend(_name_df.loc[_unk_mask, 'GSTIN'].dropna().astype(str).str.upper().tolist())
-        _unknown_in_hub = sorted({g for g in _unknown_in_hub if g and g.lower() not in ('', 'nan', 'none')})
+                _names = _name_df['Name of Party'].astype(str).str.strip()
+                _unk_mask = _name_df['Name of Party'].isna() | _names.str.lower().isin(_missing_name_tokens)
+                for _gstin_raw in _name_df.loc[_unk_mask, 'GSTIN'].dropna().tolist():
+                    _gstin_clean = str(_gstin_raw).strip().upper()
+                    if _gstin_clean and _gstin_clean.lower() not in ('nan', 'none'):
+                        _unknown_sources.setdefault(_gstin_clean, set()).add(_source_label)
+        _unknown_in_hub = sorted(_unknown_sources)
 
         # Session flags
         _names_skipped = st.session_state.get('hub_names_skipped', False)
@@ -2444,10 +2485,10 @@ elif st.session_state.app_stage == 'results':
             st.markdown(f"""
             <div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:12px;padding:16px 20px;margin-bottom:12px">
               <div style="font-size:14px;font-weight:800;color:#92400E;margin-bottom:4px">
-                Missing Party Names - {len(_unknown_in_hub)} GSTINs
+                Missing Party Names - {len(_unknown_in_hub)} unique GSTINs
               </div>
               <div style="font-size:12px;color:#78350F;line-height:1.6">
-                B2B and CDNR missing names are collected here before reports are generated.
+                B2B and CDNR missing names are combined here before reports are generated.
               </div>
             </div>
             """, unsafe_allow_html=True)
@@ -2455,13 +2496,15 @@ elif st.session_state.app_stage == 'results':
             # ── TRUE SPREADSHEET — st.data_editor ──────────────────────────
             _name_tbl = pd.DataFrame({
                 'GSTIN': _unknown_in_hub,
+                'Source': [' + '.join(sorted(_unknown_sources.get(_g, []))) for _g in _unknown_in_hub],
                 'Party Name': [st.session_state.get(f'cdnr_name_{_g}', '') for _g in _unknown_in_hub]
             })
             _gst_copy_text = "\n".join(_unknown_in_hub)
+            _hub_name_editor_key = f"hub_name_editor_{hashlib.md5(_gst_copy_text.encode('utf-8')).hexdigest()[:8]}"
             components.html(f"""
             <button id="copy-gstin" style="border:1px solid #CBD5E1;background:#fff;border-radius:8px;
                     padding:8px 12px;font-size:12px;font-weight:800;color:#0F172A;cursor:pointer">
-                Copy GSTIN List
+                Copy GSTIN List ({len(_unknown_in_hub)})
             </button>
             <span id="copy-status" style="font-family:sans-serif;font-size:12px;color:#64748B;margin-left:8px"></span>
             <script>
@@ -2469,7 +2512,7 @@ elif st.session_state.app_stage == 'results':
             const status = document.getElementById('copy-status');
             btn.onclick = async () => {{
                 await navigator.clipboard.writeText({json.dumps(_gst_copy_text)});
-                status.textContent = 'Copied';
+                status.textContent = 'Copied {len(_unknown_in_hub)}';
                 setTimeout(() => status.textContent = '', 1600);
             }};
             </script>
@@ -2479,12 +2522,13 @@ elif st.session_state.app_stage == 'results':
                 _name_tbl,
                 column_config={
                     'GSTIN':      st.column_config.TextColumn('GSTIN',      disabled=True,  width='medium'),
+                    'Source':     st.column_config.TextColumn('Source',     disabled=True,  width='small'),
                     'Party Name': st.column_config.TextColumn('Party Name', disabled=False, width='large'),
                 },
                 hide_index=True,
                 use_container_width=True,
                 num_rows='fixed',
-                key='hub_name_editor',
+                key=_hub_name_editor_key,
             )
 
             st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
@@ -3495,12 +3539,16 @@ elif st.session_state.app_stage == 'results':
                         )
                         st.session_state.cdnr_result  = cdnr_result
                         st.session_state.cdnr_summary = cdnr_summary
+                        st.session_state['combined_report_bytes'] = None
+                        st.session_state['hub_names_done'] = False
+                        st.session_state['hub_names_skipped'] = False
                         # Save to DB so history loads restore CDNR results
                         if st.session_state.current_recon_id:
                             save_cdnr_to_history(st.session_state.current_recon_id, cdnr_result, cdnr_summary)
                             log_action(st.session_state.current_recon_id, 'cdnr_run',
                                        {'matched': cdnr_summary.get('matched_count', 0),
                                         'not_in_2b': cdnr_summary.get('not_in_2b_count', 0)})
+                        st.rerun()
                         st.markdown("""
                         <div class="next-step-hint">
                           <div style="font-size:11px;font-weight:800;color:#1352C9;letter-spacing:.07em;text-transform:uppercase;margin-bottom:5px">
