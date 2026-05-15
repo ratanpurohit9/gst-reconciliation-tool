@@ -99,6 +99,7 @@ import zipfile
 import os
 import re
 import html
+import json
 
 # --- CORE IMPORTS ---
 from modules.constants import (REQUIRED_FIELDS, FIXED_BOOKS_MAPPING, FIXED_GST_MAPPING,
@@ -2426,12 +2427,12 @@ elif st.session_state.app_stage == 'results':
         """, unsafe_allow_html=True)
 
         # ── Check for unknown names ─────────────────────────────────────────
-        _cdnr_for_names = st.session_state.get('cdnr_result')
         _unknown_in_hub = []
-        if _cdnr_for_names is not None and 'Name of Party' in _cdnr_for_names.columns:
-            _unk_mask = _cdnr_for_names['Name of Party'].isin(['Unknown', '', 'nan', 'UNKNOWN']) | _cdnr_for_names['Name of Party'].isna()
-            _unknown_in_hub = _cdnr_for_names.loc[_unk_mask, 'GSTIN'].dropna().unique().tolist()
-            _unknown_in_hub = [g for g in _unknown_in_hub if g and str(g) not in ('', 'nan')]
+        for _name_df in [st.session_state.get('last_result'), st.session_state.get('cdnr_result')]:
+            if _name_df is not None and 'Name of Party' in _name_df.columns and 'GSTIN' in _name_df.columns:
+                _unk_mask = _name_df['Name of Party'].isin(['Unknown', '', 'nan', 'UNKNOWN']) | _name_df['Name of Party'].isna()
+                _unknown_in_hub.extend(_name_df.loc[_unk_mask, 'GSTIN'].dropna().astype(str).str.upper().tolist())
+        _unknown_in_hub = sorted({g for g in _unknown_in_hub if g and g.lower() not in ('', 'nan', 'none')})
 
         # Session flags
         _names_skipped = st.session_state.get('hub_names_skipped', False)
@@ -2443,25 +2444,42 @@ elif st.session_state.app_stage == 'results':
             st.markdown(f"""
             <div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:12px;padding:16px 20px;margin-bottom:12px">
               <div style="font-size:14px;font-weight:800;color:#92400E;margin-bottom:4px">
-                ✏️ Unknown Vendor Names Detected — {len(_unknown_in_hub)} GSTINs
+                Missing Party Names - {len(_unknown_in_hub)} GSTINs
               </div>
               <div style="font-size:12px;color:#78350F;line-height:1.6">
-                Your CDNR data has <b>{len(_unknown_in_hub)} vendors</b> showing as "Unknown".<br>
-                Update their names below for accurate reports, or skip to download now.
+                B2B and CDNR missing names are collected here before reports are generated.
               </div>
             </div>
             """, unsafe_allow_html=True)
 
             # ── TRUE SPREADSHEET — st.data_editor ──────────────────────────
             _name_tbl = pd.DataFrame({
-                'GST':        _unknown_in_hub,
-                'Trade Name': [st.session_state.get(f'cdnr_name_{_g}', '') for _g in _unknown_in_hub]
+                'GSTIN': _unknown_in_hub,
+                'Party Name': [st.session_state.get(f'cdnr_name_{_g}', '') for _g in _unknown_in_hub]
             })
+            _gst_copy_text = "\n".join(_unknown_in_hub)
+            components.html(f"""
+            <button id="copy-gstin" style="border:1px solid #CBD5E1;background:#fff;border-radius:8px;
+                    padding:8px 12px;font-size:12px;font-weight:800;color:#0F172A;cursor:pointer">
+                Copy GSTIN List
+            </button>
+            <span id="copy-status" style="font-family:sans-serif;font-size:12px;color:#64748B;margin-left:8px"></span>
+            <script>
+            const btn = document.getElementById('copy-gstin');
+            const status = document.getElementById('copy-status');
+            btn.onclick = async () => {{
+                await navigator.clipboard.writeText({json.dumps(_gst_copy_text)});
+                status.textContent = 'Copied';
+                setTimeout(() => status.textContent = '', 1600);
+            }};
+            </script>
+            """, height=40)
+            st.code(_gst_copy_text, language=None)
             _edited_names = st.data_editor(
                 _name_tbl,
                 column_config={
-                    'GST':        st.column_config.TextColumn('GST',        disabled=True,  width='medium'),
-                    'Trade Name': st.column_config.TextColumn('Trade Name', disabled=False, width='large'),
+                    'GSTIN':      st.column_config.TextColumn('GSTIN',      disabled=True,  width='medium'),
+                    'Party Name': st.column_config.TextColumn('Party Name', disabled=False, width='large'),
                 },
                 hide_index=True,
                 use_container_width=True,
@@ -2472,33 +2490,27 @@ elif st.session_state.app_stage == 'results':
             st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
             _btn_col1, _btn_col2 = st.columns([3, 1])
             with _btn_col1:
-                if st.button("✅ Update Names & Proceed to Downloads", type="primary", use_container_width=True, key="hub_apply_names"):
+                if st.button("Update Names & Proceed to Downloads", type="primary", use_container_width=True, key="hub_apply_names"):
                     _updated_hub = 0
-                    _new_cdnr_hub = st.session_state.cdnr_result.copy()
                     for _, _row in _edited_names.iterrows():
-                        _g = _row['GST']
-                        _n = str(_row['Trade Name']).strip()
+                        _g = str(_row['GSTIN']).strip().upper()
+                        _n = str(_row['Party Name']).strip()
                         if _n and _n not in ('', 'nan'):
-                            _new_cdnr_hub.loc[_new_cdnr_hub['GSTIN'] == _g, 'Name of Party'] = _n
+                            for _key in ['last_result', 'cdnr_result']:
+                                _df_fix = st.session_state.get(_key)
+                                if _df_fix is not None and 'GSTIN' in _df_fix.columns and 'Name of Party' in _df_fix.columns:
+                                    _mask_fix = _df_fix['GSTIN'].astype(str).str.upper().eq(_g)
+                                    _df_fix.loc[_mask_fix, 'Name of Party'] = _n
+                                    st.session_state[_key] = _df_fix
                             st.session_state[f'cdnr_name_{_g}'] = _n
                             _updated_hub += 1
                     if _updated_hub:
-                        _last_r = st.session_state.get('last_result')
-                        if _last_r is not None and 'GSTIN' in _last_r.columns:
-                            for _, _row in _edited_names.iterrows():
-                                _g = _row['GST']
-                                _n = str(_row['Trade Name']).strip()
-                                if _n and _n not in ('', 'nan'):
-                                    _mask_l = (_last_r['GSTIN'] == _g) & (_last_r['Name of Party'].isin(['Unknown','','UNKNOWN']))
-                                    _last_r.loc[_mask_l, 'Name of Party'] = _n
-                            st.session_state['last_result'] = _last_r
-                        st.session_state.cdnr_result = _new_cdnr_hub
                         st.session_state['combined_report_bytes'] = None
                         st.session_state['hub_names_done'] = True
                         st.rerun()
                     else:
-                        st.warning("No names entered — type trade names in the table above, then click Update.")
-            with _btn_col2:
+                        st.warning("No names entered - type party names in the table above, then click Update.")
+            if False:
                 if st.button("⏭ Skip for Now", use_container_width=True, key="hub_skip_names"):
                     st.session_state['hub_names_skipped'] = True
                     st.rerun()
@@ -2942,7 +2954,8 @@ elif st.session_state.app_stage == 'results':
                         elif imp_selected_vendors and not imp_company:
                             st.warning("Please enter your company name above.")
 
-        with st.expander("🌐 Fix 'Unknown' Vendors — Enter Name Manually", expanded=False):
+        if False:
+          with st.expander("🌐 Fix 'Unknown' Vendors — Enter Name Manually", expanded=False):
             st.info("💡 If any vendor appears as 'Unknown', look up their name on the [GST Portal](https://www.gst.gov.in/searchtaxpayer) and enter it below.")
             if 'Name of Party' in result.columns:
                 unique_unknown_gstins = result[result['Name of Party'] == 'Unknown']['GSTIN'].dropna().unique().tolist()
@@ -2968,7 +2981,8 @@ elif st.session_state.app_stage == 'results':
             else:
                 st.success("✅ All vendors identified!")
 
-        with st.expander("✎ Correct Vendor Name (Fix 'Unknown' by GSTIN)", expanded=False):
+        if False:
+          with st.expander("✎ Correct Vendor Name (Fix 'Unknown' by GSTIN)", expanded=False):
             _b2b_parties = result['Name of Party'].dropna().astype(str).unique().tolist()
             _cdnr_result = st.session_state.get('cdnr_result')
             if _cdnr_result is not None and not _cdnr_result.empty and 'Name of Party' in _cdnr_result.columns:
@@ -3612,7 +3626,7 @@ elif st.session_state.app_stage == 'results':
                 _unknown_gstins = _unknown_df['GSTIN'].dropna().unique().tolist()
                 _unknown_gstins = [g for g in _unknown_gstins if g and str(g) not in ('', 'nan')]
 
-                if _unknown_gstins:
+                if False and _unknown_gstins:
                     with st.expander(f"✏️ Fix Unknown Party Names ({len(_unknown_gstins)} GSTINs)", expanded=True):
                         st.caption("These GSTINs appear in your Books but could not be matched to a supplier name. Enter the correct name manually below.")
                         _name_inputs = {}
