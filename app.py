@@ -425,27 +425,28 @@ st.markdown("""
     .main .block-container:has(.recon-page-root) {
         max-width: 100% !important;
         padding: 0 !important;
+        overflow: hidden !important;
     }
     .recon-page-root {
         background: #fcf8fa;
         color: #1b1b1d;
         font-family: 'DM Sans', sans-serif;
         margin: 0;
-        min-height: calc(100vh - 0px);
+        min-height: 100vh;
     }
     .recon-appbar {
         background: rgba(252,248,250,.92);
         backdrop-filter: blur(12px);
         border-bottom: 1px solid #e4e2e4;
-        padding: 14px 40px;
+        padding: 10px 32px;
         display: flex;
         align-items: center;
         justify-content: space-between;
     }
     .recon-brand { display: flex; align-items: center; gap: 16px; }
     .recon-brand-icon {
-        width: 45px;
-        height: 45px;
+        width: 38px;
+        height: 38px;
         border-radius: 5px;
         background: #ba1a1a;
         color: #fff;
@@ -489,11 +490,11 @@ st.markdown("""
         background: #fcdeb5;
         color: #271901;
         border-bottom: 1px solid #dec29a;
-        padding: 10px 40px;
+        padding: 7px 32px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        font-size: 15px;
+        font-size: 13px;
     }
     .recon-trialbar b {
         font-size: 13px;
@@ -502,15 +503,16 @@ st.markdown("""
         margin-right: 10px;
     }
     .recon-main-grid {
-        min-height: calc(100vh - 118px);
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+        min-height: 0;
+        height: calc(100vh - 104px);
+        display: block;
         background:
             radial-gradient(at 0% 0%, rgba(216,226,255,.22) 0, transparent 46%),
             radial-gradient(at 100% 100%, rgba(252,222,181,.16) 0, transparent 50%),
             #fcf8fa;
         position: relative;
         overflow: hidden;
+        padding: 22px 32px;
     }
     .recon-main-grid::before {
         content: "₹";
@@ -533,25 +535,25 @@ st.markdown("""
         pointer-events: none;
     }
     .recon-left-pane, .recon-right-pane {
-        padding: 40px;
+        padding: 0;
         position: relative;
         z-index: 1;
     }
-    .recon-left-pane { border-right: 1px solid #e4e2e4; background: rgba(252,248,250,.42); }
+    .recon-left-pane { border-right: none; background: transparent; }
     .recon-stepper.exact {
-        margin: 0 0 38px;
-        gap: 30px;
+        margin: 0 0 16px;
+        gap: 20px;
     }
-    .recon-stepper.exact .recon-step { font-size: 17px; gap: 14px; }
-    .recon-stepper.exact .recon-step-num { width: 42px; height: 42px; font-size: 14px; }
-    .recon-stepper.exact .recon-step-line { width: 66px; background: #c6c6cd; }
+    .recon-stepper.exact .recon-step { font-size: 14px; gap: 10px; }
+    .recon-stepper.exact .recon-step-num { width: 34px; height: 34px; font-size: 12px; }
+    .recon-stepper.exact .recon-step-line { width: 52px; background: #c6c6cd; }
     .recon-form-card {
         background: rgba(255,255,255,.82);
         border: 1px solid rgba(198,198,205,.6);
         border-radius: 8px;
-        padding: 18px 26px 24px;
+        padding: 12px 18px 14px;
         box-shadow: 0 2px 10px rgba(0,0,0,.04);
-        margin-bottom: 34px;
+        margin-bottom: 16px;
     }
     .recon-exact-label {
         display: flex;
@@ -568,11 +570,11 @@ st.markdown("""
         display: flex;
         align-items: center;
         gap: 10px;
-        font-size: 20px;
-        line-height: 28px;
+        font-size: 15px;
+        line-height: 20px;
         font-weight: 900;
         color: #1b1b1d;
-        margin: 0 0 12px;
+        margin: 0 0 8px;
     }
     .recon-upload-title .small-pill {
         background: #f0edef;
@@ -593,13 +595,13 @@ st.markdown("""
     .recon-upload-icon.blue { background: rgba(0,88,190,.10); color: #0058be; }
     .recon-upload-icon.red { background: rgba(186,26,26,.10); color: #ba1a1a; }
     .recon-uploader-wrap {
-        margin-bottom: 28px;
+        margin-bottom: 14px;
     }
     .recon-uploader-wrap div[data-testid="stFileUploader"] {
         width: 100%;
     }
     .recon-uploader-wrap div[data-testid="stFileUploader"] section {
-        min-height: 265px;
+        min-height: 122px;
         border: 2px dashed #c6c6cd !important;
         border-radius: 12px !important;
         background: rgba(255,255,255,.62) !important;
@@ -640,15 +642,15 @@ st.markdown("""
         border: 1px solid rgba(0,88,190,.16);
         border-radius: 8px;
         color: #004395;
-        padding: 14px 16px;
-        font-size: 14px;
+        padding: 9px 12px;
+        font-size: 12px;
         margin-top: 6px;
     }
     .recon-panel-head {
         display: flex;
         align-items: center;
         gap: 16px;
-        margin: 6px 0 26px;
+        margin: 0 0 14px;
     }
     .recon-panel-icon {
         width: 40px;
@@ -665,14 +667,14 @@ st.markdown("""
     .recon-panel-icon.dark { background: #1b1b1d; }
     .recon-panel-heading { font-size: 18px; font-weight: 900; color: #111; }
     .recon-panel-copy { font-size: 13px; color: #45464d; }
-    .recon-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 38px; }
+    .recon-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
     .confidence-box, .confidence-box-gst {
         background: rgba(255,255,255,.92) !important;
         border: 1px solid #e4e2e4 !important;
         border-radius: 12px !important;
-        padding: 18px 20px !important;
+        padding: 14px 16px !important;
         box-shadow: 0 8px 18px -16px rgba(15,23,42,.3);
-        min-height: 128px;
+        min-height: 92px;
     }
     .recon-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
     .recon-bottom-run {
@@ -1669,84 +1671,71 @@ if st.session_state.app_stage == 'setup':
     with st.container():
         st.markdown("""
         <div class="recon-main-grid">
-          <section class="recon-left-pane">
-            <div class="recon-stepper exact">
-              <div class="recon-step active"><span class="recon-step-num">1</span><span>Upload Files</span></div>
-              <div class="recon-step-line"></div>
-              <div class="recon-step"><span class="recon-step-num">2</span><span>Column Mapping</span></div>
-              <div class="recon-step-line"></div>
-              <div class="recon-step"><span class="recon-step-num">3</span><span>Settings &amp; Run</span></div>
-            </div>
+          <div class="recon-stepper exact">
+            <div class="recon-step active"><span class="recon-step-num">1</span><span>Upload Files</span></div>
+            <div class="recon-step-line"></div>
+            <div class="recon-step"><span class="recon-step-num">2</span><span>Column Mapping</span></div>
+            <div class="recon-step-line"></div>
+            <div class="recon-step"><span class="recon-step-num">3</span><span>Settings &amp; Run</span></div>
+          </div>
+        </div>
         """, unsafe_allow_html=True)
+        setup_left, setup_right = st.columns([1, 1], gap="large")
+        with setup_left:
         # ── Software selector (compact) ───────────────────────────────────────
-        software_names = list(SOFTWARE_COLUMN_PROFILES.keys())
-        st.markdown('<div class="recon-form-card"><div class="recon-exact-label">▣ Accounting Software</div>', unsafe_allow_html=True)
-        selected_software = st.selectbox(
-            "📋 Accounting Software (for auto column-mapping)",
-            software_names,
-            index=software_names.index(st.session_state.get('software_profile', software_names[0]))
-                  if st.session_state.get('software_profile') in software_names else 0,
-            key="software_profile",
-            help="Columns are auto-mapped based on your software's export format.",
-            label_visibility="collapsed"
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
-        software_profile = SOFTWARE_COLUMN_PROFILES[selected_software]
+            software_names = list(SOFTWARE_COLUMN_PROFILES.keys())
+            st.markdown('<div class="recon-form-card"><div class="recon-exact-label">▣ Accounting Software</div>', unsafe_allow_html=True)
+            selected_software = st.selectbox(
+                "📋 Accounting Software (for auto column-mapping)",
+                software_names,
+                index=software_names.index(st.session_state.get('software_profile', software_names[0]))
+                      if st.session_state.get('software_profile') in software_names else 0,
+                key="software_profile",
+                help="Columns are auto-mapped based on your software's export format.",
+                label_visibility="collapsed"
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+            software_profile = SOFTWARE_COLUMN_PROFILES[selected_software]
 
-        # ── File Upload — clean, focused ──────────────────────────────────────
-        st.markdown(f"""
-        <div style="display:none">
-          <div style="background:#FFF8E1;border:2px solid #F2C521;border-radius:14px;padding:16px 18px">
-            <div style="font-size:13px;font-weight:800;color:#7A5200;margin-bottom:4px">📚 Purchase Register</div>
-            <div style="font-size:11px;color:#C89000">From {selected_software}</div>
-          </div>
-          <div style="background:#F0F4FF;border:2px solid #93C5FD;border-radius:14px;padding:16px 18px">
-            <div style="font-size:13px;font-weight:800;color:#1D4ED8;margin-bottom:4px">🏛️ GSTR-2B Portal Data</div>
-            <div style="font-size:11px;color:#3B82F6">Download from GST Portal (NIC format)</div>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
+            # ── File Upload — compact, single-screen layout ───────────────────
+            st.markdown("""
+            <div class="recon-upload-title">
+              <span class="recon-upload-icon blue">▤</span>
+              <span>Purchase Register</span>
+              <span class="small-pill">Books Data</span>
+            </div>
+            <div class="recon-uploader-wrap">
+            """, unsafe_allow_html=True)
+            file_books = st.file_uploader(
+                "Upload Purchase File",
+                type=['xlsx','csv'],
+                key="b_up",
+                label_visibility="collapsed",
+                help=f"Upload purchase register from {selected_software}. XLSX and CSV supported."
+            )
+            st.caption(f"XLSX, CSV supported · 200MB limit · From {selected_software}")
+            st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("""
-        <div class="recon-upload-title">
-          <span class="recon-upload-icon blue">▤</span>
-          <span>Purchase Register</span>
-          <span class="small-pill">Books Data</span>
-        </div>
-        <div class="recon-uploader-wrap">
-        """, unsafe_allow_html=True)
-        file_books = st.file_uploader(
-            "Upload Purchase File",
-            type=['xlsx','csv'],
-            key="b_up",
-            label_visibility="collapsed",
-            help=f"Upload purchase register from {selected_software}. XLSX and CSV supported."
-        )
-        st.caption(f"XLSX, CSV supported · 200MB limit · From {selected_software}")
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("""
+            <div class="recon-upload-title">
+              <span class="recon-upload-icon red">▥</span>
+              <span>GSTR-2B Portal Data</span>
+              <span class="small-pill">NIC Format</span>
+            </div>
+            <div class="recon-uploader-wrap">
+            """, unsafe_allow_html=True)
+            file_gst = st.file_uploader(
+                "Upload GSTR-2B File",
+                type=['xlsx','csv'],
+                key="g_up",
+                label_visibility="collapsed",
+                help="Upload GSTR-2B downloaded from GST Portal in NIC format."
+            )
+            st.caption("Download from GST Portal · XLSX, CSV supported")
+            st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("""
-        <div class="recon-upload-title">
-          <span class="recon-upload-icon red">▥</span>
-          <span>GSTR-2B Portal Data</span>
-          <span class="small-pill">NIC Format</span>
-        </div>
-        <div class="recon-uploader-wrap">
-        """, unsafe_allow_html=True)
-        file_gst = st.file_uploader(
-            "Upload GSTR-2B File",
-            type=['xlsx','csv'],
-            key="g_up",
-            label_visibility="collapsed",
-            help="Upload GSTR-2B downloaded from GST Portal in NIC format."
-        )
-        st.caption("Download from GST Portal · XLSX, CSV supported")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        st.markdown("""
-          <div class="recon-info-note">ⓘ CDNR detected in 2B. For complete results, run CDNR Reconciliation after finishing B2B.</div>
-          </section>
-          <section class="recon-right-pane">
+        with setup_right:
+            st.markdown("""
             <div class="recon-panel-head">
               <span class="recon-panel-icon">✓</span>
               <span>
@@ -1773,9 +1762,8 @@ if st.session_state.app_stage == 'setup':
                 <span class="recon-panel-copy">Upload both files to configure thresholds and details.</span>
               </span>
             </div>
-          </section>
-        </div>
-        """, unsafe_allow_html=True)
+            <div class="recon-info-note">ⓘ CDNR detected in 2B. For complete results, run CDNR Reconciliation after finishing B2B.</div>
+            """, unsafe_allow_html=True)
 
     if file_books and file_gst:
 
