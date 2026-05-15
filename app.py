@@ -1,4 +1,4 @@
-# app.py — GST Reconciliation Tool Enterprise v9.0
+﻿# app.py — GST Reconciliation Tool Enterprise v9.0
 # ══════════════════════════════════════════════════════
 # LICENSE GATE — runs before any app logic
 # ══════════════════════════════════════════════════════
@@ -88,6 +88,7 @@ except Exception as _lic_err:
 #    16. Streamlit-lottie removed — uses native progress bar
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import altair as alt
@@ -97,6 +98,7 @@ import io
 import zipfile
 import os
 import re
+import html
 
 # --- CORE IMPORTS ---
 from modules.constants import (REQUIRED_FIELDS, FIXED_BOOKS_MAPPING, FIXED_GST_MAPPING,
@@ -1331,7 +1333,7 @@ if False:
 # ==========================================
 # HEADER
 # ==========================================
-if not st.session_state.get('show_dashboard', True) and st.session_state.get('app_stage') != 'setup':
+if not st.session_state.get('show_dashboard', True) and st.session_state.get('app_stage') not in ('setup', 'results'):
     st.markdown("""
     <div class="app-header-banner">
         <div style="display:flex;align-items:center;gap:14px;">
@@ -1348,9 +1350,7 @@ if not st.session_state.get('show_dashboard', True) and st.session_state.get('ap
     """, unsafe_allow_html=True)
 
 # ── License status banner ─────────────────────────────────────────────────────
-if (not st.session_state.get('show_dashboard', True)) and "lic_banner" in st.session_state and not (
-    not st.session_state.get('show_dashboard', True) and st.session_state.get('app_stage') == 'setup'
-):
+if (not st.session_state.get('show_dashboard', True)) and "lic_banner" in st.session_state and st.session_state.get('app_stage') not in ('setup', 'results'):
     _mode, _msg = st.session_state["lic_banner"]
     if _mode == "trial":
         st.warning(f"⏳ **Trial Mode** — {_msg}  |  Enter an activation key to unlock full access.")
@@ -1371,7 +1371,7 @@ if (not st.session_state.get('show_dashboard', True)) and "lic_banner" in st.ses
 
 # ── Seamless Workspace Navigation Bar ───────────────────────────────────────
 # Shows only when user is INSIDE a workflow (not on the main dashboard)
-if not st.session_state.get('show_dashboard', True) and st.session_state.get('app_stage') != 'setup':
+if not st.session_state.get('show_dashboard', True) and st.session_state.get('app_stage') not in ('setup', 'results'):
     _wf_client  = st.session_state.get('meta_name', '')
     _wf_stage   = st.session_state.get('app_stage', 'setup')
     _wf_period  = st.session_state.get('meta_period', '')
@@ -1579,13 +1579,13 @@ def merge_gstr2b_files(uploaded_files):
 
 
 # ── MERGER UI — top right corner via columns ─────────────────────────────────
-if st.session_state.get('app_stage') != 'setup':
+if st.session_state.get('app_stage') not in ('setup', 'results'):
     _merger_col, _merger_btn_col = st.columns([5, 1])
     with _merger_btn_col:
         if st.button("🔀 Merge 2B Files", help="Merge multiple GSTR-2B files into one", use_container_width=True):
             st.session_state['show_merger'] = not st.session_state.get('show_merger', False)
 
-if st.session_state.get('app_stage') != 'setup' and st.session_state.get('show_merger', False):
+if st.session_state.get('app_stage') not in ('setup', 'results') and st.session_state.get('show_merger', False):
     with st.container():
         st.markdown("""
         <div style='background: linear-gradient(135deg, #1a237e, #1565c0); color:white;
@@ -1674,7 +1674,7 @@ if st.session_state.app_stage == 'setup':
           </div>
         </div>
         """, unsafe_allow_html=True)
-        setup_left, setup_right = st.columns([1, 1], gap="large")
+        setup_left, setup_right = st.columns([1, 0.001], gap="large")
         with setup_left:
         # ── Software selector (compact) ───────────────────────────────────────
             software_names = list(SOFTWARE_COLUMN_PROFILES.keys())
@@ -1728,7 +1728,11 @@ if st.session_state.app_stage == 'setup':
             st.caption("Download from GST Portal · XLSX, CSV supported")
             st.markdown("</div>", unsafe_allow_html=True)
 
-        with setup_right:
+        if not (file_books and file_gst):
+            st.stop()
+
+        if False:
+          with setup_right:
             st.markdown("""
             <div class="recon-panel-head">
               <span class="recon-panel-icon">✓</span>
@@ -1774,7 +1778,7 @@ if st.session_state.app_stage == 'setup':
         df_g_raw = load_data_preview(file_gst)
 
         # --- DATA CONFIDENCE PANEL ---
-        if df_b_raw is not None and df_g_raw is not None:
+        if False and df_b_raw is not None and df_g_raw is not None:
             st.markdown('<div class="section-hdr">📊 Data Confidence Check</div>', unsafe_allow_html=True)
             st.markdown('<div class="section-sub">Verify numbers match your source files before running reconciliation.</div>', unsafe_allow_html=True)
             b_summary = make_data_summary(df_b_raw, "Purchase Register (Books)")
@@ -2140,61 +2144,6 @@ elif st.session_state.app_stage == 'processing':
 # ==========================================
 elif st.session_state.app_stage == 'results':
 
-    st.markdown(f"""
-    <div class="results-topbar">
-      <div class="results-brand">
-        <div class="results-brand-title">GST Reconciliation<br>Tool</div>
-        <div class="results-version">Enterprise<br>v9.0</div>
-      </div>
-      <div class="results-nav">
-        <span class="active">Dashboard</span>
-        <span>GSTR-2B vs Purchase<br>Register</span>
-        <span>Results</span>
-      </div>
-      <div class="results-action-row">
-        <div class="results-top-btn primary">New<br>Recon</div>
-        <div class="results-top-btn">Open<br>Folder</div>
-        <div class="results-icon-dot">⌁</div>
-        <div class="results-icon-dot">⚙</div>
-        <div class="results-icon-dot">?</div>
-        <div class="results-avatar"></div>
-      </div>
-    </div>
-    <div class="results-client-row">
-      <div class="results-client-card">
-        <div class="results-client-name">{st.session_state['meta_name']}</div>
-        <div class="results-client-fy">FY {st.session_state['meta_fy']}</div>
-      </div>
-      <div class="results-status">
-        <div><span class="dot"></span><b>B2B Reconciliation Complete</b> — {st.session_state['meta_name'].upper()} · {st.session_state['meta_period']} {st.session_state['meta_fy']} · <span style="color:#76777d">{st.session_state['meta_gstin']}</span></div>
-        <div style="font-size:22px;color:#2170e4">ⓘ</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # ── Result header banner ─────────────────────────────────────────────────
-    st.markdown(f"""
-    <div class="recon-success-bar" style="display:flex;align-items:center;justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:9px">
-          <div class="recon-success-dot"></div>
-          <div class="recon-success-text">
-            ✅ B2B Reconciliation Complete — <b>{st.session_state['meta_name']}</b>
-            &nbsp;·&nbsp; {st.session_state['meta_period']} {st.session_state['meta_fy']}
-            &nbsp;·&nbsp; <span style="font-family:monospace;font-size:10px">{st.session_state['meta_gstin']}</span>
-          </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    _sb_c1, _sb_c2, _sb_c3 = st.columns([5, 1, 1])
-    with _sb_c2:
-        if st.button("📁 Open Folder", use_container_width=True):
-            if st.session_state.current_client_path:
-                open_folder(st.session_state.current_client_path)
-    with _sb_c3:
-        if st.button("🔄 New Recon", type="primary", use_container_width=True):
-            st.session_state.app_stage = 'setup'
-            st.rerun()
-
     result = st.session_state['last_result']
     df_b   = st.session_state['df_b_clean']
     df_g   = st.session_state['df_g_clean']
@@ -2202,6 +2151,13 @@ elif st.session_state.app_stage == 'results':
     name   = st.session_state['meta_name']
     fy     = st.session_state['meta_fy']
     period = st.session_state['meta_period']
+
+    st.markdown(f"""
+    <div style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:14px 18px;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:800;color:#64748B;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Party Name</div>
+      <div style="font-size:22px;line-height:1.2;font-weight:900;color:#0F172A">{name}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     # Safe display copy
     result_display = result.copy()
@@ -2227,57 +2183,6 @@ elif st.session_state.app_stage == 'results':
             if 'Matched' in st:       return 100.0
             return 0.0
         result_display['Match_Confidence'] = result_display.apply(_backfill_confidence, axis=1)
-
-    # ─────────────────────────────────────────────────────
-    # WORKFLOW PROGRESS BANNER
-    # ─────────────────────────────────────────────────────
-    _cdnr_done    = st.session_state.get('cdnr_result') is not None
-    _combined_rdy = st.session_state.get('combined_report_bytes') is not None
-    _notices_sent = st.session_state.get('notices_sent_count', 0)
-
-    def _wf_step(num, label, done, active=False):
-        if done:
-            _circle = f'<div style="width:28px;height:28px;border-radius:50%;background:#059669;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0">&#10003;</div>'
-            _txt    = f'<span style="font-size:12px;font-weight:700;color:#059669">{label}</span>'
-        elif active:
-            _circle = f'<div style="width:28px;height:28px;border-radius:50%;background:#1352C9;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;animation:gst-pulse 1.6s ease-in-out infinite">{num}</div>'
-            _txt    = f'<span style="font-size:13px;font-weight:800;color:#1352C9">{label}</span>'
-        else:
-            _circle = f'<div style="width:28px;height:28px;border-radius:50%;background:#E2E8F0;color:#94A3B8;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">{num}</div>'
-            _txt    = f'<span style="font-size:12px;font-weight:600;color:#94A3B8">{label}</span>'
-        return f'<div style="display:flex;align-items:center;gap:8px">{_circle}{_txt}</div>'
-
-    def _wf_line(done):
-        bg = '#059669' if done else '#E2E8F0'
-        return f'<div style="flex:1;height:2px;background:{bg};margin:0 6px;min-width:20px"></div>'
-
-    _b2b_done = True  # already in results stage
-    _dl_done  = _combined_rdy
-    _ntc_done = _notices_sent > 0
-
-    if not _cdnr_done:   _active = 2
-    elif not _dl_done:   _active = 3
-    elif not _ntc_done:  _active = 4
-    else:                _active = 5
-
-    st.markdown(f"""
-    <div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:14px 20px;
-                margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
-      <div style="font-size:10px;font-weight:800;color:#94A3B8;letter-spacing:.08em;
-                  text-transform:uppercase;margin-bottom:10px">WORKFLOW PROGRESS</div>
-      <div style="display:flex;align-items:center">
-        {_wf_step(1,'B2B Recon', _b2b_done, _active==1)}
-        {_wf_line(_b2b_done)}
-        {_wf_step(2,'CDN Recon', _cdnr_done, _active==2)}
-        {_wf_line(_cdnr_done)}
-        {_wf_step(3,'Downloads', _dl_done, _active==3)}
-        {_wf_line(_dl_done)}
-        {_wf_step(4,'Send Notices', _ntc_done, _active==4)}
-        {_wf_line(_ntc_done)}
-        {_wf_step(5,'Follow-up', False, _active==5)}
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
 
     tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
         "📊 Dashboard & Scorecard",
