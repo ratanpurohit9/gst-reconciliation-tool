@@ -432,7 +432,7 @@ st.markdown("""
         color: #1b1b1d;
         font-family: 'DM Sans', sans-serif;
         margin: 0;
-        min-height: 100vh;
+        min-height: 0;
     }
     .recon-appbar {
         background: rgba(252,248,250,.92);
