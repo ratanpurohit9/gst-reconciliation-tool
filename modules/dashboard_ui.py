@@ -10,13 +10,17 @@ DASH_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
 
-.stApp { background: #fcf8fa !important; font-family: 'Inter', sans-serif !important; color: #1b1b1d !important; }
+.stApp { background: #eef2f8 !important; font-family: 'Inter', sans-serif !important; color: #1b1b1d !important; overflow: hidden !important; }
 .main .block-container {
-    padding: 0 32px 32px !important;
-    max-width: 1440px !important;
+    padding: 0 24px 18px !important;
+    max-width: 100% !important;
+    height: 100vh !important;
+    overflow: hidden !important;
 }
 [data-testid="stSidebar"] { display: none !important; }
 [data-testid="collapsedControl"] { display: none !important; }
+header[data-testid="stHeader"] { display: none !important; }
+section.main { overflow: hidden !important; }
 .material-symbols-outlined {
     font-family: 'Material Symbols Outlined';
     font-weight: normal;
@@ -34,11 +38,10 @@ DASH_CSS = """
 }
 
 .home-topbar {
-    position: sticky;
-    top: 0;
+    position: relative;
     z-index: 50;
-    margin: 0 -32px 24px;
-    padding: 10px 32px;
+    margin: 0 -24px 14px;
+    padding: 10px 36px;
     background: #ffffff;
     border-bottom: 1px solid #c6c6cd;
     display: flex;
@@ -51,7 +54,7 @@ DASH_CSS = """
     background: #0058be; color: #fff; display: grid; place-items: center;
     box-shadow: 0 8px 18px rgba(0,88,190,.16);
 }
-.home-app { font-size: 22px; line-height: 24px; color: #0058be; font-weight: 800; }
+.home-app { font-size: 20px; line-height: 22px; color: #0058be; font-weight: 800; }
 .home-ver { font-size: 12px; color: #1b1b1d; letter-spacing: .08em; }
 .home-nav { display: flex; gap: 40px; align-items: center; }
 .home-nav span { color: #1b1b1d; font-size: 15px; }
@@ -74,14 +77,14 @@ DASH_CSS = """
     color: #271901;
     border: 1px solid #dec29a;
     border-radius: 12px;
-    padding: 13px 24px;
+    padding: 10px 18px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 38px;
+    margin-bottom: 18px;
 }
-.trial-left { display: flex; align-items: center; gap: 13px; font-size: 16px; }
+.trial-left { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .trial-key {
     border: 1px solid #c6c6cd;
     background: #fff;
@@ -90,18 +93,18 @@ DASH_CSS = """
     font-weight: 600;
     white-space: nowrap;
 }
-.home-hero { margin-bottom: 34px; }
-.home-hero h1 { font-size: 30px; line-height: 38px; margin: 0 0 4px; color: #000; font-weight: 800; letter-spacing: 0 !important; }
-.home-hero p { font-size: 16px; color: #45464d; margin: 0; }
-.module-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.module-title { display: flex; align-items: center; gap: 8px; font-size: 24px; font-weight: 800; color: #000; }
+.home-hero { margin-bottom: 16px; }
+.home-hero h1 { font-size: 26px; line-height: 32px; margin: 0 0 2px; color: #000; font-weight: 800; letter-spacing: 0 !important; }
+.home-hero p { font-size: 13px; color: #45464d; margin: 0; }
+.module-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.module-title { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 800; color: #000; }
 .module-live-badge { background: #2170e4; color: #fff; border-radius: 999px; padding: 5px 13px; font-size: 12px; font-weight: 800; }
 .module-card {
-    min-height: 372px;
+    min-height: 245px;
     border: 1px solid #c6c6cd;
     border-radius: 12px;
     background: #f6f3f5;
-    padding: 28px 28px 24px;
+    padding: 20px 22px 18px;
     display: flex;
     flex-direction: column;
     position: relative;
@@ -112,20 +115,20 @@ DASH_CSS = """
     box-shadow: 0 12px 20px -16px rgba(0,88,190,.9);
 }
 .module-state {
-    position: absolute; top: 28px; right: 28px;
-    color: #76777d; font-size: 15px; letter-spacing: .14em; text-transform: uppercase;
+    position: absolute; top: 18px; right: 18px;
+    color: #76777d; font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
 }
 .module-card.active .module-state {
     background: #0058be; color: #fff; border-radius: 4px;
-    padding: 4px 7px; font-size: 14px; letter-spacing: 0;
+    padding: 4px 7px; font-size: 11px; letter-spacing: 0;
 }
-.module-num { color: #76777d; font-size: 16px; letter-spacing: .08em; margin-bottom: 18px; text-transform: uppercase; }
+.module-num { color: #76777d; font-size: 12px; letter-spacing: .08em; margin-bottom: 14px; text-transform: uppercase; }
 .module-card.active .module-num { color: #0058be; }
-.module-icon { color: #55779e; font-size: 40px; margin-bottom: 28px; }
+.module-icon { color: #55779e; font-size: 34px; margin-bottom: 18px; }
 .module-card.active .module-icon { color: #0058be; }
-.module-card h3 { color: #1b1b1d; font-size: 20px; line-height: 28px; margin: 0 0 8px; letter-spacing: 0 !important; }
-.module-card p { color: #66666d; font-size: 14px !important; line-height: 20px !important; margin: 0 0 24px; flex: 1; }
-.module-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 24px; }
+.module-card h3 { color: #1b1b1d; font-size: 16px; line-height: 22px; margin: 0 0 8px; letter-spacing: 0 !important; }
+.module-card p { color: #66666d; font-size: 12px !important; line-height: 18px !important; margin: 0 0 14px; flex: 1; }
+.module-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px; }
 .module-tag {
     border: 1px solid #c6c6cd;
     background: #eae7e9;
@@ -139,9 +142,9 @@ DASH_CSS = """
 .module-card.active .module-tag { background: #2170e4; color: #fff; border-color: #2170e4; }
 .module-open-btn > div > button, .module-soon-btn > div > button {
     border-radius: 8px !important;
-    height: 42px !important;
+    height: 36px !important;
     font-weight: 700 !important;
-    font-size: 15px !important;
+    font-size: 13px !important;
 }
 .module-open-btn > div > button {
     background: #0058be !important;
@@ -154,7 +157,8 @@ DASH_CSS = """
     border: 1px solid #c6c6cd !important;
 }
 .enterprise-panel {
-    margin-top: 24px;
+    display: none;
+    margin-top: 16px;
     background: #fff;
     border: 1px solid #c6c6cd;
     border-radius: 12px;
@@ -187,6 +191,7 @@ DASH_CSS = """
 .support-box p { font-size: 13px !important; color: #45464d; margin: 0 0 14px; }
 .support-link { color: #0058be; font-weight: 800; }
 .home-footer {
+    display: none;
     margin: 42px -32px 0;
     padding: 26px 32px 0;
     border-top: 1px solid #c6c6cd;
@@ -314,9 +319,7 @@ def render_dashboard():
     """, unsafe_allow_html=True)
 
     clicked_module = None
-    row1 = st.columns(3, gap="large")
-    row2 = st.columns([1, 1, 1], gap="large")
-    card_cols = list(row1) + [row2[0], row2[1]]
+    card_cols = st.columns(5, gap="medium")
 
     for i, (col, mod) in enumerate(zip(card_cols, MODULES)):
         with col:

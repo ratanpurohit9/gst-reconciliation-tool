@@ -1217,9 +1217,10 @@ def make_template_excel():
     return out.getvalue()
 
 # ==========================================
-# SIDEBAR — HISTORY
+# SIDEBAR — HISTORY (hidden; dashboard/workspace now uses direct navigation)
 # ==========================================
-with st.sidebar:
+if False:
+  with st.sidebar:
     # ── Back to Dashboard ─────────────────────────────────────────────────────
     if not st.session_state.get('show_dashboard', True):
         if st.button("🏠  ← Dashboard", key="back_to_dashboard", use_container_width=True, type="primary"):
@@ -1330,23 +1331,24 @@ with st.sidebar:
 # ==========================================
 # HEADER
 # ==========================================
-st.markdown("""
-<div class="app-header-banner">
-    <div style="display:flex;align-items:center;gap:14px;">
-        <div style="width:46px;height:46px;background:rgba(255,255,255,0.12);border-radius:12px;
-                    display:flex;align-items:center;justify-content:center;font-size:24px;
-                    border:1px solid rgba(255,255,255,0.2);">🛡️</div>
-        <div>
-            <span class="header-title-text">GST Reconciliation Tool</span>
-            <span class="header-version-pill">Enterprise v9.0</span>
-            <div class="header-sub-text">Automated B2B · B2BA · CDNR Matching &amp; Compliance Reporting</div>
+if not st.session_state.get('show_dashboard', True) and st.session_state.get('app_stage') != 'setup':
+    st.markdown("""
+    <div class="app-header-banner">
+        <div style="display:flex;align-items:center;gap:14px;">
+            <div style="width:46px;height:46px;background:rgba(255,255,255,0.12);border-radius:12px;
+                        display:flex;align-items:center;justify-content:center;font-size:24px;
+                        border:1px solid rgba(255,255,255,0.2);">🛡️</div>
+            <div>
+                <span class="header-title-text">GST Reconciliation Tool</span>
+                <span class="header-version-pill">Enterprise v9.0</span>
+                <div class="header-sub-text">Automated B2B · B2BA · CDNR Matching &amp; Compliance Reporting</div>
+            </div>
         </div>
     </div>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 # ── License status banner ─────────────────────────────────────────────────────
-if "lic_banner" in st.session_state and not (
+if (not st.session_state.get('show_dashboard', True)) and "lic_banner" in st.session_state and not (
     not st.session_state.get('show_dashboard', True) and st.session_state.get('app_stage') == 'setup'
 ):
     _mode, _msg = st.session_state["lic_banner"]
