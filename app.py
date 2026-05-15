@@ -504,35 +504,18 @@ st.markdown("""
     }
     .recon-main-grid {
         min-height: 0;
-        height: calc(100vh - 104px);
+        height: auto;
         display: block;
-        background:
-            radial-gradient(at 0% 0%, rgba(216,226,255,.22) 0, transparent 46%),
-            radial-gradient(at 100% 100%, rgba(252,222,181,.16) 0, transparent 50%),
-            #fcf8fa;
+        background: transparent;
         position: relative;
-        overflow: hidden;
-        padding: 22px 32px;
+        overflow: visible;
+        padding: 14px 32px 0;
     }
     .recon-main-grid::before {
-        content: "₹";
-        position: absolute;
-        left: 76px;
-        bottom: -82px;
-        font-size: 300px;
-        font-weight: 900;
-        color: rgba(27,27,29,.035);
-        pointer-events: none;
+        display: none;
     }
     .recon-main-grid::after {
-        content: "▧";
-        position: absolute;
-        right: 42px;
-        top: 230px;
-        font-size: 260px;
-        transform: rotate(-14deg);
-        color: rgba(27,27,29,.04);
-        pointer-events: none;
+        display: none;
     }
     .recon-left-pane, .recon-right-pane {
         padding: 0;
@@ -675,6 +658,15 @@ st.markdown("""
         padding: 14px 16px !important;
         box-shadow: 0 8px 18px -16px rgba(15,23,42,.3);
         min-height: 92px;
+    }
+    .main .block-container:has(.recon-page-root) div[data-testid="stVerticalBlock"] {
+        gap: 0.75rem !important;
+    }
+    .main .block-container:has(.recon-page-root) div[data-testid="stHorizontalBlock"] {
+        padding: 0 32px 20px !important;
+    }
+    .main .block-container:has(.recon-page-root) div[data-testid="stCaptionContainer"] p {
+        margin-bottom: 0 !important;
     }
     .recon-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
     .recon-bottom-run {
