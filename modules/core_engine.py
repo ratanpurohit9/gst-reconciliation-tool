@@ -442,19 +442,17 @@ def run_reconciliation(df_books, df_gst, tolerance, manual_pairs, smart_mode_ena
         (abs(final_df['CGST_BOOKS'].fillna(0) - final_df['CGST_GST'].fillna(0)) > 1.0)
     )
     final_df.loc[mask_match & mask_taxable_ok & mask_tax_diff, 'Recon_Status'] = "Matched (Tax Error)"
-    if mask_match.any():
-        _tax_error_reason = (
-            " Tax breakup differs - IGST diff: " +
-            (final_df['IGST_BOOKS'].fillna(0) - final_df['IGST_GST'].fillna(0)).abs().map(_reason_money) +
-            ", CGST diff: " +
-            (final_df['CGST_BOOKS'].fillna(0) - final_df['CGST_GST'].fillna(0)).abs().map(_reason_money) +
-            ", SGST diff: " +
-            (final_df['SGST_BOOKS'].fillna(0) - final_df['SGST_GST'].fillna(0)).abs().map(_reason_money) +
-            "."
-        )
-        final_df.loc[mask_match & mask_taxable_ok & mask_tax_diff, 'Match_Reason'] = (
-            final_df.loc[mask_match & mask_taxable_ok & mask_tax_diff, 'Match_Reason'].fillna('Matched invoice found.') +
-            _tax_error_reason[mask_match & mask_taxable_ok & mask_tax_diff]
+    tax_error_mask = mask_match & mask_taxable_ok & mask_tax_diff
+    for idx in final_df.index[tax_error_mask]:
+        base_reason = _reason_text(final_df.at[idx, 'Match_Reason']) if 'Match_Reason' in final_df.columns else ''
+        if base_reason == 'blank':
+            base_reason = 'Matched invoice found.'
+        igst_diff = abs(_reason_number(final_df.at[idx, 'IGST_BOOKS']) - _reason_number(final_df.at[idx, 'IGST_GST']))
+        cgst_diff = abs(_reason_number(final_df.at[idx, 'CGST_BOOKS']) - _reason_number(final_df.at[idx, 'CGST_GST']))
+        sgst_diff = abs(_reason_number(final_df.at[idx, 'SGST_BOOKS']) - _reason_number(final_df.at[idx, 'SGST_GST']))
+        final_df.at[idx, 'Match_Reason'] = (
+            f"{base_reason} Tax breakup differs - IGST diff: {_reason_money(igst_diff)}, "
+            f"CGST diff: {_reason_money(cgst_diff)}, SGST diff: {_reason_money(sgst_diff)}."
         )
 
     # Coalesce Columns
