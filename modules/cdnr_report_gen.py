@@ -1,4 +1,4 @@
-﻿# modules/cdnr_report_gen.py
+# modules/cdnr_report_gen.py
 import io
 import numpy as np
 import pandas as pd
@@ -25,7 +25,7 @@ HEADERS = [
     'GSTIN (2B)',
     'Note No (2B)','Note Date (2B)','Type (2B)',
     'Taxable (2B)','IGST (2B)','CGST (2B)','SGST (2B)',
-    'Diff Taxable','Diff IGST','Diff CGST','Diff SGST',
+    'Diff Tax Amount','Diff IGST','Diff CGST','Diff SGST',
     'Status','Match Logic',
 ]
 BK_S,BK_E=2,8; GT_S,GT_E=9,16; DF_S,DF_E=17,20; ST_I=21; ML_I=22
@@ -48,7 +48,7 @@ SUG_HEADERS = [
     'GSTIN (2B)','Name (2B)','GSTIN Status',
     'Note No (2B)','Note Date (2B)','Type (2B)',
     'Taxable (2B)','IGST (2B)','CGST (2B)','SGST (2B)',
-    'Diff Taxable','Diff IGST','Diff CGST','Diff SGST',
+    'Diff Tax Amount','Diff IGST','Diff CGST','Diff SGST',
     'Status','Match Logic',
 ]
 SUG_BK_S,SUG_BK_E=2,8; SUG_GT_S,SUG_GT_E=9,17
@@ -212,7 +212,7 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
         'Not in GSTR-2B':       ('#FFF2F2','#C00000'),
         'Not in Books':          ('#FFFBEA','#B8860B'),
         'Mismatch':              ('#FFF0F0','#C00000'),
-        'AI Matched':            ('#EBF3FB','#2E75B6'),
+        'Smart Matched':            ('#EBF3FB','#2E75B6'),
         'Suggestion':            ('#EFF4FF','#1D4ED8'),
         'CDNR Matched':          ('#F0FFF4','#1E6B3C'),
     }
@@ -226,7 +226,7 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
         else:    kw['align']='left'
         return _f(**kw)
     def _spri(s):
-        order=['Not in GSTR-2B','Not in Books','Mismatch','AI Matched','Suggestion','CDNR Matched']
+        order=['Not in GSTR-2B','Not in Books','Mismatch','Smart Matched','Suggestion','CDNR Matched']
         for i,k in enumerate(order):
             if k in str(s): return i
         return len(order)
@@ -269,7 +269,7 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
         ('Not in GSTR-2B',  len(_cs('Not in GSTR-2B'))),
         ('Not in Books',    len(_cs('Not in Books'))),
         ('Suggestions',     len(_cs('Suggestion'))),
-        ('AI Matched',      len(_cs('AI Matched'))),
+        ('Smart Matched',      len(_cs('Smart Matched'))),
     ]
     ws_sum.set_row(4,6)
     ws_sum.merge_range(5,0,5,15,'CDNR Reconciliation — Individual Record View',FBANNER)
@@ -283,7 +283,7 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
         '#', 'Name of Party', 'GSTIN',
         'Note No (Books)', 'Date (Books)', 'Type (Books)', 'Taxable (B)', 'IGST (B)', 'CGST (B)', 'SGST (B)',
         'Note No (Portal)', 'Date (Portal)', 'Type (Portal)', 'Taxable (P)', 'IGST (P)', 'CGST (P)', 'SGST (P)',
-        'Diff Taxable', 'Diff GST', 'Status',
+        'Diff Tax Amount', 'Diff GST', 'Status',
     ]
     ws_sum.set_row(7,6)
     ws_sum.set_row(8,18)
@@ -315,7 +315,7 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
         b_cgst=_nn(row.get('CGST_BOOKS')); b_sgst=_nn(row.get('SGST_BOOKS'))
         g_tax=_nn(row.get('Taxable Value_GST'));  g_igst=_nn(row.get('IGST_GST'))
         g_cgst=_nn(row.get('CGST_GST')); g_sgst=_nn(row.get('SGST_GST'))
-        d_tax=b_tax-g_tax; d_gst=(b_igst+b_cgst+b_sgst)-(g_igst+g_cgst+g_sgst)
+        d_tax=(b_igst+b_cgst+b_sgst)-(g_igst+g_cgst+g_sgst); d_gst=d_tax
 
         ws_sum.write(er, 0,  ri+1,                                        fi)
         ws_sum.write(er, 1,  _vv(row.get('Name of Party','')),             ft)
@@ -374,7 +374,7 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
         ('CDNR Matched',          full_df[s.str.contains(r'CDNR Matched$',regex=True,na=False)], False),
         ('CDNR Matched (Tax Error)',full_df[s=='CDNR Matched (Tax Error)'],                False),
         ('CDNR Mismatch',         full_df[s.str.contains('Mismatch',na=False)],           False),
-        ('CDNR AI Matched',       full_df[s.str.contains('AI Matched',na=False)],         False),
+        ('CDNR Smart Matched',       full_df[s.str.contains('Smart Matched',na=False)],         False),
         ('Not In GSTR-2B',        full_df[s.str.contains('Not in GSTR-2B',na=False)],    False),
         ('Not In Books',          full_df[s.str.contains('Not in Books',na=False)],       False),
         ('CDNR Suggestions',      full_df[s.str.contains('Suggestion',na=False)],         True),

@@ -19,21 +19,21 @@ STATUS_MSG = {
         "notice":  "UNIDENTIFIED RECORD: Invoice in portal but not in our books. Please provide invoice copy or issue Credit Note.",
         "action":  "Provide invoice copy or issue Credit Note",
     },
-    "AI Matched (Date Mismatch)": {
+    "Smart Matched (Date Mismatch)": {
         "short":   "DATE MISMATCH",
         "email":   "Invoice matched by value but Date differs between GSTR-1 and our records.\n   Action: Amend the invoice date in your GSTR-1 to match our Purchase Records.",
         "wa":      "Date Mismatch - Please amend invoice date in GSTR-1",
         "notice":  "DATE DISCREPANCY: Invoice date in your GSTR-1 does not match our records. Please amend.",
         "action":  "Amend invoice date in GSTR-1",
     },
-    "AI Matched (Invoice Mismatch)": {
+    "Smart Matched (Invoice Mismatch)": {
         "short":   "INVOICE NO. MISMATCH",
         "email":   "Invoice matched by value & date but Invoice Number differs.\n   Action: Amend the invoice number in your GSTR-1 to match our Purchase Records.",
         "wa":      "Invoice No. Mismatch - Please amend invoice number in GSTR-1",
         "notice":  "REFERENCE DISCREPANCY: Invoice number in your GSTR-1 does not match our records. Please amend.",
         "action":  "Amend invoice number in GSTR-1",
     },
-    "AI Matched (Mismatch)": {
+    "Smart Matched (Mismatch)": {
         "short":   "VALUE MISMATCH",
         "email":   "Invoice identified but taxable value / tax amounts do not match.\n   Action: Amend the taxable value and tax amounts in your GSTR-1.",
         "wa":      "Value Mismatch - Please amend invoice amounts in GSTR-1",
@@ -217,10 +217,10 @@ def generate_whatsapp_message(df, vendor_name, company_name):
     STATUS_ICONS  = {
         'Invoices Not in GSTR-2B':        '🔴',
         'Invoices Not in Purchase Books':  '🟠',
-        'AI Matched (Mismatch)':           '🔴',
+        'Smart Matched (Mismatch)':           '🔴',
         'Matched (Tax Error)':             '🟠',
-        'AI Matched (Date Mismatch)':      '🔵',
-        'AI Matched (Invoice Mismatch)':   '🔵',
+        'Smart Matched (Date Mismatch)':      '🔵',
+        'Smart Matched (Invoice Mismatch)':   '🔵',
         'Old ITC (Previous Year)':         '🟣',
         'Suggestion':                      '🔵',
         'Manually Linked':                 '🟢',
@@ -228,10 +228,10 @@ def generate_whatsapp_message(df, vendor_name, company_name):
     STATUS_ACTION = {
         'Invoices Not in GSTR-2B':        'Upload in GSTR-1',
         'Invoices Not in Purchase Books':  'Provide invoice copy / issue CN',
-        'AI Matched (Mismatch)':          'Amend invoice values in GSTR-1',
+        'Smart Matched (Mismatch)':          'Amend invoice values in GSTR-1',
         'Matched (Tax Error)':            'Correct IGST/CGST/SGST breakup',
-        'AI Matched (Date Mismatch)':     'Amend invoice date in GSTR-1',
-        'AI Matched (Invoice Mismatch)':  'Amend invoice number in GSTR-1',
+        'Smart Matched (Date Mismatch)':     'Amend invoice date in GSTR-1',
+        'Smart Matched (Invoice Mismatch)':  'Amend invoice number in GSTR-1',
         'Suggestion':                     'Verify and confirm or amend',
         'Manually Linked':                'Verify amounts match your GSTR-1',
     }
@@ -486,10 +486,10 @@ _HINDI = {
     'actions': {
         'Invoices Not in GSTR-2B':        'GSTR-1 में अपलोड करें',
         'Invoices Not in Purchase Books':  'चालान प्रति / CN जारी करें',
-        'AI Matched (Mismatch)':          'GSTR-1 में मूल्य संशोधित करें',
+        'Smart Matched (Mismatch)':          'GSTR-1 में मूल्य संशोधित करें',
         'Matched (Tax Error)':            'IGST/CGST/SGST सुधारें',
-        'AI Matched (Date Mismatch)':     'GSTR-1 में दिनांक संशोधित करें',
-        'AI Matched (Invoice Mismatch)':  'GSTR-1 में चालान संख्या सुधारें',
+        'Smart Matched (Date Mismatch)':     'GSTR-1 में दिनांक संशोधित करें',
+        'Smart Matched (Invoice Mismatch)':  'GSTR-1 में चालान संख्या सुधारें',
         'Suggestion':                     'सत्यापित करें और पुष्टि करें',
         'Manually Linked':                'राशि सत्यापित करें',
         'DEFAULT':                        'समीक्षा करें और सुधारें',
@@ -508,10 +508,10 @@ _GUJARATI = {
     'actions': {
         'Invoices Not in GSTR-2B':        'GSTR-1 માં અપલોડ કરો',
         'Invoices Not in Purchase Books':  'ઇન્વૉઇસ નકલ / CN આપો',
-        'AI Matched (Mismatch)':          'GSTR-1 માં મૂલ્ય સુધારો',
+        'Smart Matched (Mismatch)':          'GSTR-1 માં મૂલ્ય સુધારો',
         'Matched (Tax Error)':            'IGST/CGST/SGST સુધારો',
-        'AI Matched (Date Mismatch)':     'GSTR-1 માં તારીખ સુધારો',
-        'AI Matched (Invoice Mismatch)':  'GSTR-1 માં ઇન્વૉઇસ નં. સુધારો',
+        'Smart Matched (Date Mismatch)':     'GSTR-1 માં તારીખ સુધારો',
+        'Smart Matched (Invoice Mismatch)':  'GSTR-1 માં ઇન્વૉઇસ નં. સુધારો',
         'Suggestion':                     'ચકાસો અને પુષ્ટિ આપો',
         'Manually Linked':                'રકમ ચકાસો',
         'DEFAULT':                        'સમીક્ષા કરો અને સુધારો',
@@ -554,10 +554,10 @@ def generate_whatsapp_message_multilang(df, vendor_name, company_name, lang='hi'
     STATUS_ICONS = {
         'Invoices Not in GSTR-2B':        '🔴',
         'Invoices Not in Purchase Books':  '🟠',
-        'AI Matched (Mismatch)':           '🔴',
+        'Smart Matched (Mismatch)':           '🔴',
         'Matched (Tax Error)':             '🟠',
-        'AI Matched (Date Mismatch)':      '🔵',
-        'AI Matched (Invoice Mismatch)':   '🔵',
+        'Smart Matched (Date Mismatch)':      '🔵',
+        'Smart Matched (Invoice Mismatch)':   '🔵',
         'Suggestion':                      '🔵',
         'Manually Linked':                 '🟢',
     }

@@ -1,4 +1,4 @@
-﻿# modules/combined_report_gen.py
+# modules/combined_report_gen.py
 # Combined B2B + CDNR Reconciliation Excel Report
 # Shows Executive Summary covering both, individual summary tabs, and all data sheets.
 
@@ -318,7 +318,7 @@ def _write_individual_sheet(wb, writer, df, sheet_name,
         'Not in GSTR-2B': ('#FFF2F2', '#C00000'),
         'Not in Books':    ('#FFFBEA', '#B8860B'),
         'Mismatch':        ('#FFF0F0', '#C00000'),
-        'AI Matched':      ('#EBF3FB', '#2E75B6'),
+        'Smart Matched':      ('#EBF3FB', '#2E75B6'),
         'Suggestion':      ('#EFF4FF', '#1D4ED8'),
         'Matched':         ('#F0FFF4', '#1E6B3C'),
     }
@@ -356,7 +356,7 @@ def _write_individual_sheet(wb, writer, df, sheet_name,
     hdrs = ['#', 'Party Name', 'GSTIN',
             f'{note_col} No (Books)', 'Date (Books)', 'Taxable (B)', 'IGST (B)', 'CGST (B)', 'SGST (B)',
             f'{note_col} No (Portal)', 'Date (Portal)', 'Taxable (P)', 'IGST (P)', 'CGST (P)', 'SGST (P)',
-            'Diff Taxable', 'Diff GST', 'Status', 'Confidence %']
+            'Diff Tax Amount', 'Diff GST', 'Status', 'Confidence %']
     ws.set_row(9, 18)
     for ci, h in enumerate(hdrs):
         ws.write(9, ci, h, FHDR)
@@ -364,7 +364,7 @@ def _write_individual_sheet(wb, writer, df, sheet_name,
     df_sorted = df.copy()
     if id_col in df_sorted.columns:
         _priority = {'Not in GSTR-2B': 1, 'Not in Books': 2, 'Mismatch': 3,
-                     'AI Matched': 4, 'Suggestion': 5, 'Matched': 6}
+                     'Smart Matched': 4, 'Suggestion': 5, 'Matched': 6}
         def _sp(s):
             for k, v in _priority.items():
                 if k in str(s): return v
@@ -388,8 +388,8 @@ def _write_individual_sheet(wb, writer, df, sheet_name,
         b_cgst = _nn(row.get('CGST_BOOKS'));           b_sgst = _nn(row.get('SGST_BOOKS'))
         g_tax  = _nn(row.get('Taxable Value_GST'));    g_igst = _nn(row.get('IGST_GST'))
         g_cgst = _nn(row.get('CGST_GST'));             g_sgst = _nn(row.get('SGST_GST'))
-        d_tax  = b_tax - g_tax
-        d_gst  = (b_igst + b_cgst + b_sgst) - (g_igst + g_cgst + g_sgst)
+        d_tax  = (b_igst + b_cgst + b_sgst) - (g_igst + g_cgst + g_sgst)
+        d_gst  = d_tax
 
         gstin_val = _vv(row.get('GSTIN', row.get('GSTIN_BOOKS', '')))
 
@@ -469,7 +469,7 @@ def _write_combined_issues(wb, writer, b2b_df, cdnr_df, gstin, name, fy, period)
         'Not in GSTR-2B': ('#FFF2F2', '#C00000'),
         'Not in Books':    ('#FFFBEA', '#B8860B'),
         'Mismatch':        ('#FFF0F0', '#C00000'),
-        'AI Matched':      ('#EBF3FB', '#2E75B6'),
+        'Smart Matched':      ('#EBF3FB', '#2E75B6'),
         'Suggestion':      ('#EFF4FF', '#1D4ED8'),
         'Tax Error':       ('#FFFBEA', '#B8860B'),
     }
@@ -494,7 +494,7 @@ def _write_combined_issues(wb, writer, b2b_df, cdnr_df, gstin, name, fy, period)
     hdrs = ['#', 'Module', 'Party Name', 'GSTIN',
             'Doc No (Books)', 'Date (Books)', 'Taxable (Books)', 'IGST (Books)', 'CGST (Books)', 'SGST (Books)',
             'Doc No (Portal)', 'Date (Portal)', 'Taxable (Portal)', 'IGST (Portal)', 'CGST (Portal)', 'SGST (Portal)',
-            'Diff Taxable', 'Diff IGST', 'Diff CGST', 'Diff SGST', 'Status']
+            'Diff Tax Amount', 'Diff IGST', 'Diff CGST', 'Diff SGST', 'Status']
     ws.set_row(7, 18)
     for ci, h in enumerate(hdrs):
         ws.write(7, ci, h, FHDR)

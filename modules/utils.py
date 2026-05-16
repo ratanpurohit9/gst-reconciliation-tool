@@ -10,7 +10,7 @@ def show_processing_animation():
         (18, "🧹",  "Cleaning & Normalising",          "Standardising invoice numbers, dates, GSTIN formats…"),
         (32, "🔗",  "Exact Match  (Pass 1)",            "Matching invoice number + date + tax amount exactly…"),
         (44, "📅",  "Date-Mismatch Match  (Pass 2)",    "Same invoice, different dates — flagging for review…"),
-        (55, "🤖",  "AI Invoice Match  (Pass 3)",       "Fuzzy invoice-number matching using similarity scoring…"),
+        (55, "🤖",  "Smart Invoice Match  (Pass 3)",       "Fuzzy invoice-number matching using similarity scoring…"),
         (66, "🔢",  "Numeric Key Match  (Pass 4)",      "Matching by taxable value + GST combinations…"),
         (76, "💡",  "Smart Suggestions  (Pass 5)",      "Cross-GSTIN suggestions for potential matches…"),
         (86, "🔗",  "Group Match  (Pass 6)",            "Grouping invoices by GSTIN for bulk reconciliation…"),
@@ -56,7 +56,7 @@ def show_processing_animation():
 <div class="rw">
   <div class="rb">GSTSuite Enterprise · Reconciliation Engine</div>
   <div class="rt">Processing Your Data</div>
-  <div class="rs">Multi-pass AI matching in progress &nbsp;<span class="dots"><span></span><span></span><span></span></span></div>
+  <div class="rs">Multi-pass Smart matching in progress &nbsp;<span class="dots"><span></span><span></span><span></span></span></div>
   <div class="bar-bg"><div class="bar-fill" style="width:{pct}%;transition:width .55s cubic-bezier(.4,0,.2,1)"></div></div>
   <div class="pct">{pct}% complete</div>
   <div style="display:flex;align-items:flex-start">

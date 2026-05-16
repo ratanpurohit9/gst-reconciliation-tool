@@ -1582,6 +1582,83 @@ def merge_gstr2b_files(uploaded_files):
     return buf.getvalue(), None
 
 
+def _uploaded_files_list(uploaded):
+    """Streamlit returns a file or a list depending on uploader settings."""
+    if not uploaded:
+        return []
+    return uploaded if isinstance(uploaded, list) else [uploaded]
+
+
+def _bytes_upload(name, data):
+    bio = io.BytesIO(data)
+    bio.name = name
+    return bio
+
+
+def _combine_preview_files(uploaded_files, label):
+    """Load one or more uploaded files into one dataframe for reconciliation."""
+    frames = []
+    for f in _uploaded_files_list(uploaded_files):
+        try:
+            f.seek(0)
+            df = load_data_preview(f)
+            if df is not None and not df.empty:
+                df = df.copy()
+                df["Source File"] = getattr(f, "name", label)
+                frames.append(df)
+        except Exception as exc:
+            st.warning(f"Could not read `{getattr(f, 'name', label)}`: {exc}")
+        finally:
+            try:
+                f.seek(0)
+            except Exception:
+                pass
+    if not frames:
+        return None
+    return pd.concat(frames, ignore_index=True, sort=False)
+
+
+def _dataframe_to_xlsx_bytes(df, sheet_name="B2B"):
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def _prepare_books_upload(uploaded_files):
+    files = _uploaded_files_list(uploaded_files)
+    if len(files) == 1:
+        files[0].seek(0)
+        data = files[0].read()
+        files[0].seek(0)
+        return load_data_preview(files[0]), data, getattr(files[0], "name", "books.xlsx")
+    df = _combine_preview_files(files, "Books")
+    if df is None:
+        return None, None, "Books_Merged.xlsx"
+    return df, _dataframe_to_xlsx_bytes(df, "B2B"), "Books_Merged.xlsx"
+
+
+def _prepare_gstr2b_upload(uploaded_files):
+    files = _uploaded_files_list(uploaded_files)
+    if len(files) == 1:
+        files[0].seek(0)
+        data = files[0].read()
+        files[0].seek(0)
+        return load_data_preview(files[0]), data, getattr(files[0], "name", "gstr2b.xlsx")
+    if files and all(str(getattr(f, "name", "")).lower().endswith(".xlsx") for f in files):
+        merged_bytes, err = merge_gstr2b_files(files)
+        if err:
+            st.warning(f"GSTR-2B merge failed, using row-wise combine instead: {err}")
+        else:
+            merged_file = _bytes_upload("GSTR2B_Merged.xlsx", merged_bytes)
+            return load_data_preview(merged_file), merged_bytes, "GSTR2B_Merged.xlsx"
+    df = _combine_preview_files(files, "GSTR-2B")
+    if df is None:
+        return None, None, "GSTR2B_Merged.xlsx"
+    return df, _dataframe_to_xlsx_bytes(df, "B2B"), "GSTR2B_Merged.xlsx"
+
+
 # ── MERGER UI — top right corner via columns ─────────────────────────────────
 if st.session_state.get('app_stage') not in ('setup', 'results'):
     _merger_col, _merger_btn_col = st.columns([5, 1])
@@ -1705,13 +1782,14 @@ if st.session_state.app_stage == 'setup':
             <div class="recon-uploader-wrap">
             """, unsafe_allow_html=True)
             file_books = st.file_uploader(
-                "Upload Purchase File",
+                "Upload Purchase Files",
                 type=['xlsx','csv'],
+                accept_multiple_files=True,
                 key="b_up",
                 label_visibility="collapsed",
-                help=f"Upload purchase register from {selected_software}. XLSX and CSV supported."
+                help=f"Upload one or more purchase register files from {selected_software}. XLSX and CSV supported."
             )
-            st.caption(f"XLSX, CSV supported · 200MB limit · From {selected_software}")
+            st.caption(f"XLSX, CSV supported · multiple periods/files allowed · From {selected_software}")
             st.markdown("</div>", unsafe_allow_html=True)
 
             st.markdown("""
@@ -1723,13 +1801,14 @@ if st.session_state.app_stage == 'setup':
             <div class="recon-uploader-wrap">
             """, unsafe_allow_html=True)
             file_gst = st.file_uploader(
-                "Upload GSTR-2B File",
+                "Upload GSTR-2B Files",
                 type=['xlsx','csv'],
+                accept_multiple_files=True,
                 key="g_up",
                 label_visibility="collapsed",
-                help="Upload GSTR-2B downloaded from GST Portal in NIC format."
+                help="Upload one or more GSTR-2B files downloaded from GST Portal in NIC format."
             )
-            st.caption("Download from GST Portal · XLSX, CSV supported")
+            st.caption("Download from GST Portal · XLSX, CSV supported · multiple periods/files allowed")
             st.markdown("</div>", unsafe_allow_html=True)
 
         if not (file_books and file_gst):
@@ -1769,17 +1848,27 @@ if st.session_state.app_stage == 'setup':
 
     if file_books and file_gst:
 
-        # Save bytes for CDNR tab
-        st.session_state['file_books_bytes'] = file_books.read(); file_books.seek(0)
-        st.session_state['file_gst_bytes']   = file_gst.read();   file_gst.seek(0)
+        # Load one or more period files and keep workbook bytes for CDNR flows.
+        df_b_raw, _books_bytes, _books_name = _prepare_books_upload(file_books)
+        df_g_raw, _gst_bytes, _gst_name = _prepare_gstr2b_upload(file_gst)
+        st.session_state['file_books_bytes'] = _books_bytes
+        st.session_state['file_gst_bytes']   = _gst_bytes
+
+        _books_files = _uploaded_files_list(file_books)
+        _gst_files   = _uploaded_files_list(file_gst)
+        if len(_books_files) > 1 or len(_gst_files) > 1:
+            st.success(
+                f"Combined {len(_books_files)} purchase file(s) and {len(_gst_files)} GSTR-2B file(s) "
+                "for multi-period reconciliation."
+            )
 
         st.divider()
         final_books_map = {}
         final_gst_map   = {}
 
-        # Load data
-        df_b_raw = load_data_preview(file_books)
-        df_g_raw = load_data_preview(file_gst)
+        if df_b_raw is None or df_g_raw is None:
+            st.error("Could not read the uploaded files. Please check the file format and upload again.")
+            st.stop()
 
         # --- DATA CONFIDENCE PANEL ---
         if False and df_b_raw is not None and df_g_raw is not None:
@@ -1818,9 +1907,11 @@ if st.session_state.app_stage == 'setup':
             st.session_state['data_summary_gst']   = g_summary
             st.divider()
 
+        _gst_workbook_file = _bytes_upload(_gst_name, _gst_bytes) if _gst_bytes else None
+
         # B2BA amendments
-        file_gst.seek(0)
-        df_b2ba, status_msg = smart_read_b2ba(file_gst)
+        _gst_workbook_file.seek(0)
+        df_b2ba, status_msg = smart_read_b2ba(_gst_workbook_file)
         if df_b2ba is not None and not df_b2ba.empty:
             st.info(f"⚡ Processing B2B Amendments... Found {len(df_b2ba)} entries in B2BA.")
             df_g_raw, deleted_count, added_count = process_amendments(df_g_raw, df_b2ba)
@@ -1828,19 +1919,19 @@ if st.session_state.app_stage == 'setup':
         elif status_msg and "Critical" in str(status_msg):
             st.warning(status_msg)
 
-        file_gst.seek(0)
+        _gst_workbook_file.seek(0)
         try:
-            _xls_check = pd.ExcelFile(file_gst)
+            _xls_check = pd.ExcelFile(_gst_workbook_file)
             _has_cdnr  = any('cdnr' in s.lower() for s in _xls_check.sheet_names)
         except Exception:
             _has_cdnr  = False
-        file_gst.seek(0)
+        _gst_workbook_file.seek(0)
         if _has_cdnr:
             st.info("📋 CDNR sheet detected in GSTR-2B. Run **CDNR Reconciliation** from **Tab 2** after B2B recon.")
 
         # Auto-detect metadata
         det_fy, det_period, det_gstin, det_name = "2025 - 2026", "April", "", ""
-        meta_fy, meta_period, meta_gstin, meta_name = extract_meta_from_readme(file_gst)
+        meta_fy, meta_period, meta_gstin, meta_name = extract_meta_from_readme(_gst_workbook_file)
         if meta_gstin: det_gstin  = meta_gstin
         if meta_name:  det_name   = meta_name
         if meta_fy:    det_fy     = meta_fy
@@ -2249,9 +2340,15 @@ elif st.session_state.app_stage == 'results':
 
         # ── ITC Net Summary Banner ─────────────────────────────────────────────
         _not_in_2b_df  = result[result['Recon_Status'] == 'Invoices Not in GSTR-2B']
-        _itc_blocked   = float(_not_in_2b_df['Final_Taxable'].sum()) if 'Final_Taxable' in _not_in_2b_df.columns else 0.0
+        _itc_blocked   = float(
+            _not_in_2b_df.get('IGST_BOOKS', pd.Series(dtype=float)).fillna(0).sum() +
+            _not_in_2b_df.get('CGST_BOOKS', pd.Series(dtype=float)).fillna(0).sum() +
+            _not_in_2b_df.get('SGST_BOOKS', pd.Series(dtype=float)).fillna(0).sum()
+        )
         _cdnr_itc      = float(st.session_state.cdnr_summary.get('net_itc_impact', 0)) if st.session_state.cdnr_summary else 0.0
-        _net_eligible  = total_books_val - _itc_blocked + _cdnr_itc
+        _net_eligible  = _books_total_gst - _itc_blocked + _cdnr_itc
+        total_books_tax_amount = _books_total_gst
+        total_gst_tax_amount = _gst_total_gst
 
         def _fmt(v):
             return "Rs. {:,.0f}".format(v)
@@ -2259,17 +2356,17 @@ elif st.session_state.app_stage == 'results':
         _banner_html = (
             '<div class="itc-net-banner">'
             '<div class="itc-item">'
-            '<div class="itc-item-label">Books Taxable (B2B)</div>'
-            '<div class="itc-item-val">' + _fmt(total_books_val) + '</div>'
+            '<div class="itc-item-label">Books Tax Amount (B2B)</div>'
+            '<div class="itc-item-val">' + _fmt(total_books_tax_amount) + '</div>'
             '</div>'
             '<div class="itc-sep"></div>'
             '<div class="itc-item">'
-            '<div class="itc-item-label">GSTR-2B Taxable</div>'
-            '<div class="itc-item-val itc-item-val-blue">' + _fmt(total_gst_val) + '</div>'
+            '<div class="itc-item-label">GSTR-2B Tax Amount</div>'
+            '<div class="itc-item-val itc-item-val-blue">' + _fmt(total_gst_tax_amount) + '</div>'
             '</div>'
             '<div class="itc-sep"></div>'
             '<div class="itc-item">'
-            '<div class="itc-item-label">ITC Blocked (Not in 2B)</div>'
+            '<div class="itc-item-label">Tax Amount at Risk (Not in 2B)</div>'
             '<div class="itc-item-val itc-item-val-red">' + _fmt(_itc_blocked) + '</div>'
             '</div>'
         )
@@ -2668,7 +2765,7 @@ elif st.session_state.app_stage == 'results':
         st.markdown('<div class="tab-theme-head"><div class="tab-theme-title">Detailed Data</div><div class="tab-theme-sub">Search, filter, review, and export every reconciled row with the same enterprise workspace theme.</div></div>', unsafe_allow_html=True)
         _t3c1, _t3c2 = st.columns([2, 2])
         with _t3c1:
-            filters = ["All Data", "Matched", "Mismatch (Value)", "AI Matched",
+            filters = ["All Data", "Matched", "Mismatch (Value)", "Smart Matched",
                        "Suggestions", "🔗 Group Match", "Manually Linked", "Not in 2B", "Not in Books"]
             status_filter = st.selectbox("Filter by Status:", filters, index=0)
         with _t3c2:
@@ -2680,11 +2777,11 @@ elif st.session_state.app_stage == 'results':
             pass
         elif status_filter == "Matched":
             df_view = result_display[result_display['Recon_Status'].str.contains('Matched', na=False) &
-                                     ~result_display['Recon_Status'].str.contains('AI', na=False)]
+                                     ~result_display['Recon_Status'].str.contains('Smart Matched', na=False)]
         elif status_filter == "Mismatch (Value)":
             df_view = result_display[result_display['Recon_Status'].str.contains('Mismatch', na=False)]
-        elif status_filter == "AI Matched":
-            df_view = result_display[result_display['Recon_Status'].str.contains('AI', na=False)].copy()
+        elif status_filter == "Smart Matched":
+            df_view = result_display[result_display['Recon_Status'].str.contains('Smart Matched', na=False)].copy()
             # Show confidence distribution summary
             if not df_view.empty and 'Match_Confidence' in df_view.columns:
                 _conf = df_view['Match_Confidence']
@@ -2694,7 +2791,7 @@ elif st.session_state.app_stage == 'results':
                 _avg    = float(_conf.mean())
                 st.markdown(f"""
                 <div style='display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;align-items:center;'>
-                  <span style='font-size:12px;font-weight:700;color:#475569;'>🎯 AI Match Confidence:</span>
+                  <span style='font-size:12px;font-weight:700;color:#475569;'>🎯 Smart Match Confidence:</span>
                   <span style='background:#F0FDF4;color:#166534;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;border:1px solid #86EFAC;'>
                     🟢 High (≥90%) &nbsp;{_high}
                   </span>
@@ -2764,10 +2861,10 @@ elif st.session_state.app_stage == 'results':
         STATUS_COLORS_DF = {
             'Invoices Not in GSTR-2B':       'background-color:#FFF2F2; color:#C00000; font-weight:600',
             'Invoices Not in Purchase Books': 'background-color:#FFFBEA; color:#B8860B; font-weight:600',
-            'AI Matched (Mismatch)':          'background-color:#FFF0F0; color:#C00000',
+            'Smart Matched (Mismatch)':          'background-color:#FFF0F0; color:#C00000',
             'Matched (Tax Error)':            'background-color:#FFFBEA; color:#B8860B',
-            'AI Matched (Date Mismatch)':     'background-color:#EBF3FB; color:#2E75B6',
-            'AI Matched (Invoice Mismatch)':  'background-color:#EBF3FB; color:#2E75B6',
+            'Smart Matched (Date Mismatch)':     'background-color:#EBF3FB; color:#2E75B6',
+            'Smart Matched (Invoice Mismatch)':  'background-color:#EBF3FB; color:#2E75B6',
             'Matched':                        'background-color:#F0FFF4; color:#1E6B3C',
             'Suggestion (Group Match)':       'background-color:#FDF4FF; color:#7C3AED; font-weight:600',
             'Suggestion':                     'background-color:#EFF4FF; color:#2E75B6',
@@ -2786,7 +2883,7 @@ elif st.session_state.app_stage == 'results':
                 styled_df, use_container_width=True,
                 column_config={
                     "Recon_Status":        st.column_config.TextColumn("Status", width="medium"),
-                    "Match_Confidence":    st.column_config.ProgressColumn("AI Confidence %", format="%.1f%%", min_value=0, max_value=100, width="small"),
+                    "Match_Confidence":    st.column_config.ProgressColumn("Smart Confidence %", format="%.1f%%", min_value=0, max_value=100, width="small"),
                     "Taxable Value_BOOKS": st.column_config.NumberColumn("Books Taxable", format="₹ %.2f"),
                     "Taxable Value_GST":   st.column_config.NumberColumn("Portal Taxable", format="₹ %.2f"),
                     "Final_Taxable":       st.column_config.NumberColumn("Final Taxable", format="₹ %.2f"),
@@ -2952,7 +3049,7 @@ elif st.session_state.app_stage == 'results':
                             _cols_st = st.columns(min(len(st_counts), 4))
                             for i, (st_name, cnt) in enumerate(st_counts.items()):
                                 with _cols_st[i % 4]:
-                                    st.metric(st_name.replace("Invoices ","").replace("AI Matched ","")[:28], cnt)
+                                    st.metric(st_name.replace("Invoices ","").replace("Smart Matched ","")[:28], cnt)
                         st.markdown("---")
                         _imp_c1, _imp_c2 = st.columns([3, 1])
                         with _imp_c1:
@@ -3214,10 +3311,10 @@ elif st.session_state.app_stage == 'results':
             "All Issues":                  None,
             "Not in GSTR-2B":              "Invoices Not in GSTR-2B",
             "Not in Books":                "Invoices Not in Purchase Books",
-            "Value Mismatch":              "AI Matched (Mismatch)",
+            "Value Mismatch":              "Smart Matched (Mismatch)",
             "Tax Error":                   "Matched (Tax Error)",
-            "Date Mismatch":               "AI Matched (Date Mismatch)",
-            "Invoice No. Mismatch":        "AI Matched (Invoice Mismatch)",
+            "Date Mismatch":               "Smart Matched (Date Mismatch)",
+            "Invoice No. Mismatch":        "Smart Matched (Invoice Mismatch)",
             "Suggestions":                 "Suggestion",
         }
 
@@ -3249,7 +3346,7 @@ elif st.session_state.app_stage == 'results':
                     cols_st = st.columns(min(len(st_counts), 4))
                     for i, (st_name, cnt) in enumerate(st_counts.items()):
                         with cols_st[i % 4]:
-                            st.metric(st_name.replace("Invoices ","").replace("AI Matched ",""), cnt)
+                            st.metric(st_name.replace("Invoices ","").replace("Smart Matched ",""), cnt)
 
                 c_pdf, c_xls, c_watxt = st.columns(3)
                 zip_buffer_pdf = io.BytesIO()
@@ -3303,7 +3400,7 @@ elif st.session_state.app_stage == 'results':
                 v_counts = v_df['Recon_Status'].value_counts()
                 if not v_counts.empty:
                     st.caption("Issues: " + " | ".join(
-                        f"**{cnt}×** {st_n.replace('Invoices ','').replace('AI Matched ','')}"
+                        f"**{cnt}×** {st_n.replace('Invoices ','').replace('Smart Matched ','')}"
                         for st_n, cnt in v_counts.items()
                     ))
 
@@ -3591,7 +3688,7 @@ elif st.session_state.app_stage == 'results':
                 k6, k7 = st.columns(2)
                 k6.metric("🔶 Tax Error",  cdnr_summary.get('tax_error_count', 0),
                           help="Taxable matches but IGST/CGST/SGST differs")
-                k7.metric("🤖 AI Matched", cdnr_summary.get('ai_matched_count', 0),
+                k7.metric("🤖 Smart Matched", cdnr_summary.get('ai_matched_count', 0),
                           help="Matched via date/taxable fallback steps")
 
                 st.divider()
@@ -3599,7 +3696,7 @@ elif st.session_state.app_stage == 'results':
                 # Filter + CDNR Suggestions tab (shows GSTIN match status like B2B)
                 cdnr_filter_opts = [
                     "All Data", "CDNR Matched", "CDNR Matched (Tax Error)",
-                    "CDNR AI Matched", "CDNR Mismatch",
+                    "CDNR Smart Matched", "CDNR Mismatch",
                     "CDNR Not in GSTR-2B", "CDNR Not in Books",
                     "⚠️ CDNR Suggestions (Review GSTIN Match)",
                 ]
@@ -3608,7 +3705,7 @@ elif st.session_state.app_stage == 'results':
                 CDNR_FILTER_MAP = {
                     "CDNR Matched"             : r"CDNR Matched$",
                     "CDNR Matched (Tax Error)" : r"Tax Error",
-                    "CDNR AI Matched"          : r"AI Matched",
+                    "CDNR Smart Matched"          : r"Smart Matched",
                     "CDNR Mismatch"            : r"Mismatch",
                     "CDNR Not in GSTR-2B"      : r"Not in GSTR-2B",
                     "CDNR Not in Books"        : r"Not in Books",
@@ -3638,7 +3735,7 @@ elif st.session_state.app_stage == 'results':
                     column_config={
                         "Taxable Value_BOOKS": st.column_config.NumberColumn("Taxable (Books)", format="₹ %.2f"),
                         "Taxable Value_GST":   st.column_config.NumberColumn("Taxable (2B)",    format="₹ %.2f"),
-                        "Diff_Taxable":        st.column_config.NumberColumn("Diff Taxable",    format="₹ %.2f"),
+                        "Diff_Taxable":        st.column_config.NumberColumn("Diff Tax Amount",    format="₹ %.2f"),
                         "Diff_IGST":           st.column_config.NumberColumn("Diff IGST",       format="₹ %.2f"),
                         "Diff_CGST":           st.column_config.NumberColumn("Diff CGST",       format="₹ %.2f"),
                         "Diff_SGST":           st.column_config.NumberColumn("Diff SGST",       format="₹ %.2f"),

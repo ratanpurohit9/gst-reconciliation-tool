@@ -327,7 +327,7 @@ def run_cdnr_reconciliation(df_books_raw, df_gst_raw, tolerance=5.0):
     Step 1 – Exact:          GSTIN + Date_Str + Round_Taxable  (value tol)
     Step 2 – Date Mismatch:  GSTIN + Round_Taxable             (value tol)
     Step 3 – Taxable Mis.:   GSTIN + Date_Str                  (any value)
-    Step 4 – AI Mismatch:    GSTIN + Note_Type + Round_Tax     (value tol)
+    Step 4 – Smart Mismatch: GSTIN + Note_Type + Round_Tax     (value tol)
     Step 5 – Suggestion:     Note_Type + Round_Taxable          (cross-GSTIN)
     Step 6 – Group Match:    GSTIN total value ≈ same
 
@@ -373,7 +373,7 @@ def run_cdnr_reconciliation(df_books_raw, df_gst_raw, tolerance=5.0):
     bL['K2'] = bL['GSTIN'] + '_' + bL['Round_Taxable'].astype(str)
     gL['K2'] = gL['GSTIN'] + '_' + gL['Round_Taxable'].astype(str)
     m2, bL, gL = _merge(bL, gL, 'K2',
-                        'CDNR AI Matched (Date Mismatch)', 'Date Mismatch',
+                        'CDNR Smart Matched (Date Mismatch)', 'Date Mismatch',
                         value_tol=True, tolerance=tolerance, one_to_one=True)
     results.append(m2)
 
@@ -382,16 +382,16 @@ def run_cdnr_reconciliation(df_books_raw, df_gst_raw, tolerance=5.0):
     bL['K3'] = bL['GSTIN'] + '_' + bL['Date_Str']
     gL['K3'] = gL['GSTIN'] + '_' + gL['Date_Str']
     m3, bL, gL = _merge(bL, gL, 'K3',
-                        'CDNR AI Matched (Taxable Mismatch)', 'Taxable Mismatch',
+                        'CDNR Smart Matched (Taxable Mismatch)', 'Taxable Mismatch',
                         value_tol=False, one_to_one=True)
     results.append(m3)
 
-    # ── STEP 4: AI Mismatch (GSTIN + Type + Value) ─────────
-    prog.progress(58, text='CDNR Step 4: AI Mismatch…')
+    # ── STEP 4: Smart Mismatch (GSTIN + Type + Value) ──────
+    prog.progress(58, text='CDNR Step 4: Smart Mismatch…')
     bL['K4'] = bL['GSTIN'] + '_' + bL['Note Type'].astype(str) + '_' + bL['Round_Taxable'].astype(str)
     gL['K4'] = gL['GSTIN'] + '_' + gL['Note Type'].astype(str) + '_' + gL['Round_Taxable'].astype(str)
     m4, bL, gL = _merge(bL, gL, 'K4',
-                        'CDNR AI Matched (Mismatch)', 'Type+Value Match',
+                        'CDNR Smart Matched (Mismatch)', 'Type+Value Match',
                         value_tol=True, tolerance=tolerance, one_to_one=True)
     results.append(m4)
 
@@ -471,7 +471,10 @@ def _post_process(df: pd.DataFrame, tmap: dict) -> pd.DataFrame:
     df['Name of Party'] = name_b.fillna(name_g).fillna(df['GSTIN'].map(tmap)).fillna('Unknown')
 
     # ── Diff columns (mirrors report_gen compute) ───────────
-    df['Diff_Taxable'] = (_get(df,'Taxable Value_BOOKS').fillna(0) - _get(df,'Taxable Value_GST').fillna(0)).round(2)
+    df['Diff_Taxable'] = (
+        (_get(df,'IGST_BOOKS').fillna(0) + _get(df,'CGST_BOOKS').fillna(0) + _get(df,'SGST_BOOKS').fillna(0)) -
+        (_get(df,'IGST_GST').fillna(0) + _get(df,'CGST_GST').fillna(0) + _get(df,'SGST_GST').fillna(0))
+    ).round(2)
     df['Diff_IGST']    = (_get(df,'IGST_BOOKS').fillna(0) - _get(df,'IGST_GST').fillna(0)).round(2)
     df['Diff_CGST']    = (_get(df,'CGST_BOOKS').fillna(0) - _get(df,'CGST_GST').fillna(0)).round(2)
     df['Diff_SGST']    = (_get(df,'SGST_BOOKS').fillna(0) - _get(df,'SGST_GST').fillna(0)).round(2)
@@ -512,7 +515,7 @@ def _build_summary(df, df_b, df_g, del_n, add_n):
         'matched_count'      : s.str.contains(r'CDNR Matched$',       regex=True, na=False).sum(),
         'tax_error_count'    : (s == 'CDNR Matched (Tax Error)').sum(),
         'mismatch_count'     : s.str.contains('Mismatch',             na=False).sum(),
-        'ai_matched_count'   : s.str.contains('AI Matched',           na=False).sum(),
+        'ai_matched_count'   : s.str.contains('Smart Matched',           na=False).sum(),
         'not_in_2b_count'    : (s == 'CDNR Not in GSTR-2B').sum(),
         'not_in_books_count' : (s == 'CDNR Not in Books').sum(),
         'net_itc_impact'     : df.get('ITC_Impact', pd.Series(dtype=float)).sum(),

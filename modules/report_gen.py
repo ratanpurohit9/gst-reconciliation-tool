@@ -1,4 +1,4 @@
-﻿# modules/report_gen.py
+# modules/report_gen.py
 import pandas as pd
 import io
 import xlsxwriter
@@ -51,10 +51,10 @@ def generate_vendor_split_zip(full_df):
                 STATUS_ROW_COLORS = {
                     'Invoices Not in GSTR-2B':       ('#FFF2F2','#C00000'),
                     'Invoices Not in Purchase Books': ('#FFFBEA','#B8860B'),
-                    'AI Matched (Mismatch)':          ('#FFF0F0','#C00000'),
+                    'Smart Matched (Mismatch)':          ('#FFF0F0','#C00000'),
                     'Matched (Tax Error)':            ('#FFFBEA','#B8860B'),
-                    'AI Matched (Date Mismatch)':     ('#EBF3FB','#2E75B6'),
-                    'AI Matched (Invoice Mismatch)':  ('#EBF3FB','#2E75B6'),
+                    'Smart Matched (Date Mismatch)':     ('#EBF3FB','#2E75B6'),
+                    'Smart Matched (Invoice Mismatch)':  ('#EBF3FB','#2E75B6'),
                     'Suggestion':                     ('#EBF3FB','#2E75B6'),
                     'Suggestion (Group Match)':       ('#EBF3FB','#2E75B6'),
                     'Manually Linked':                ('#F0FFF4','#1E6B3C'),
@@ -280,11 +280,11 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
     _STATUS_FMT = {
         'Invoices Not in GSTR-2B':       ('#FFF2F2','#C00000'),
         'Invoices Not in Purchase Books': ('#FFFBEA','#B8860B'),
-        'AI Matched (Mismatch)':          ('#FFF0F0','#C00000'),
+        'Smart Matched (Mismatch)':          ('#FFF0F0','#C00000'),
         'Matched (Tax Error)':            ('#FFFBEA','#B8860B'),
-        'AI Matched (Date Mismatch)':     ('#EBF3FB','#2E75B6'),
-        'AI Matched (Invoice Mismatch)':  ('#EBF3FB','#2E75B6'),
-        'AI Matched':                     ('#EBF3FB','#2E75B6'),
+        'Smart Matched (Date Mismatch)':     ('#EBF3FB','#2E75B6'),
+        'Smart Matched (Invoice Mismatch)':  ('#EBF3FB','#2E75B6'),
+        'Smart Matched':                     ('#EBF3FB','#2E75B6'),
         'Suggestion (Group Match)':       ('#F3E5F5','#7C3AED'),
         'Suggestion':                     ('#EFF4FF','#1D4ED8'),
         'Manually Linked':                ('#F0FFF4','#1E6B3C'),
@@ -292,8 +292,8 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
     }
     _STATUS_PRIORITY = {
         'Invoices Not in GSTR-2B': 1, 'Invoices Not in Purchase Books': 2,
-        'AI Matched (Mismatch)': 3,   'Matched (Tax Error)': 4,
-        'AI Matched': 5,              'Suggestion (Group Match)': 6,
+        'Smart Matched (Mismatch)': 3,   'Matched (Tax Error)': 4,
+        'Smart Matched': 5,              'Suggestion (Group Match)': 6,
         'Suggestion': 7,              'Manually Linked': 8,
         'Matched': 9,
     }
@@ -351,7 +351,7 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
         ('Not in GSTR-2B',      len(_bsub(r'Not in GSTR-2B'))),
         ('Not in Books',        len(_bsub(r'Not in.*Books'))),
         ('Suggestions',         len(_bsub(r'Suggestion'))),
-        ('AI Matched',          len(_bsub(r'AI Matched'))),
+        ('Smart Matched',          len(_bsub(r'Smart Matched'))),
     ]
     ws_sum.set_row(4,6)
     ws_sum.merge_range(5,0,5,15,'B2B Reconciliation — Individual Record View',FBANNER)
@@ -363,12 +363,12 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
     ws_sum.set_row(6,22)
 
     # ── Column group headers (row 8) ──────────────────────────────────────────
-    # Columns layout:  #  | Name | GSTIN | -- BOOKS (4 cols) -- | -- PORTAL (4 cols) -- | Diff Taxable | Diff GST | Status
+    # Columns layout:  #  | Name | GSTIN | -- BOOKS (4 cols) -- | -- PORTAL (4 cols) -- | Diff Tax Amount | Diff GST | Status
     REC_COLS = [
         '#', 'Name of Party', 'GSTIN',
         'Inv No (Books)', 'Date (Books)', 'Taxable (Books)', 'IGST (B)', 'CGST (B)', 'SGST (B)',
         'Inv No (Portal)', 'Date (Portal)', 'Taxable (Portal)', 'IGST (P)', 'CGST (P)', 'SGST (P)',
-        'Diff Taxable', 'Diff GST', 'Status',
+        'Diff Tax Amount', 'Diff GST', 'Status',
     ]
     TOTAL_COLS = len(REC_COLS)  # 18
     ws_sum.set_row(7,6)
@@ -405,8 +405,8 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
         b_cgst = _n(row.get('CGST_BOOKS'));           b_sgst = _n(row.get('SGST_BOOKS'))
         g_tax  = _n(row.get('Taxable Value_GST'));    g_igst = _n(row.get('IGST_GST'))
         g_cgst = _n(row.get('CGST_GST'));             g_sgst = _n(row.get('SGST_GST'))
-        d_tax  = b_tax - g_tax
-        d_gst  = (b_igst+b_cgst+b_sgst) - (g_igst+g_cgst+g_sgst)
+        d_tax  = (b_igst+b_cgst+b_sgst) - (g_igst+g_cgst+g_sgst)
+        d_gst  = d_tax
 
         ws_sum.write(excel_row,  0, ri+1,                               fmt_idx)
         ws_sum.write(excel_row,  1, _v(row.get('Name of Party','')),    fmt_txt)
@@ -455,9 +455,9 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
     ws_sum.write(tot_row, 10, '', FTOT_L)
     for ci,col in enumerate(['Taxable Value_GST','IGST_GST','CGST_GST','SGST_GST'],11):
         ws_sum.write(tot_row, ci, _col_sum(col), FTOT)
-    d_tax_tot = _col_sum('Taxable Value_BOOKS') - _col_sum('Taxable Value_GST')
-    d_gst_tot = (_col_sum('IGST_BOOKS')+_col_sum('CGST_BOOKS')+_col_sum('SGST_BOOKS')) - \
+    d_tax_tot = (_col_sum('IGST_BOOKS')+_col_sum('CGST_BOOKS')+_col_sum('SGST_BOOKS')) - \
                 (_col_sum('IGST_GST')  +_col_sum('CGST_GST')  +_col_sum('SGST_GST'))
+    d_gst_tot = d_tax_tot
     ws_sum.write(tot_row,15, d_tax_tot, FTOT)
     ws_sum.write(tot_row,16, d_gst_tot, FTOT)
     ws_sum.write(tot_row,17, f'{total_data_rows} records', FTOT_L)
@@ -486,7 +486,7 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
     headers=['GSTIN','Name of Party',
         'Inv No (Books)','Date','Taxable','IGST','CGST','SGST',
         'Inv No (GSTR-2B)','Date','Taxable','IGST','CGST','SGST',
-        'Diff Taxable','Diff IGST','Diff CGST','Diff SGST','Status','Match Logic']
+        'Diff Tax Amount','Diff IGST','Diff CGST','Diff SGST','Status','Match Logic']
     sug_display_cols=['GSTIN','Name of Party',
         'Invoice Number_BOOKS','Invoice Date_BOOKS','Taxable Value_BOOKS','IGST_BOOKS','CGST_BOOKS','SGST_BOOKS',
         'GSTIN_GST','Name of Party_GST','GST_Remark',
@@ -496,13 +496,13 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
         'Inv No (Books)','Date','Taxable','IGST','CGST','SGST',
         'GSTIN (2B)','Name (2B)','GSTIN Status',
         'Inv No (GSTR-2B)','Date','Taxable','IGST','CGST','SGST',
-        'Diff Taxable','Diff IGST','Diff CGST','Diff SGST','Status','Match Logic']
+        'Diff Tax Amount','Diff IGST','Diff CGST','Diff SGST','Status','Match Logic']
 
     sheets={
         'All Data':      full_df,
-        'Matched':       full_df[full_df['Recon_Status'].str.contains('Matched',na=False)&~full_df['Recon_Status'].str.contains('AI',na=False)],
+        'Matched':       full_df[full_df['Recon_Status'].str.contains('Matched',na=False)&~full_df['Recon_Status'].str.contains('Smart Matched',na=False)],
         'Mismatch':      full_df[full_df['Recon_Status'].str.contains('Mismatch',na=False)],
-        'AI Matched':    full_df[full_df['Recon_Status'].str.contains('AI Matched',na=False)],
+        'Smart Matched':    full_df[full_df['Recon_Status'].str.contains('Smart Matched',na=False)],
         'Suggestions':   full_df[full_df['Recon_Status'].str.contains('Suggestion',na=False)],
         'Manual':        full_df[full_df['Recon_Status'].str.contains('Manual',na=False)],
         'Not In GSTR-2B':full_df[full_df['Recon_Status'].str.contains('Not in GSTR-2B',na=False)],
@@ -513,7 +513,11 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
         df_sub=df_sub.copy()
         if 'Invoice Date_BOOKS' in df_sub.columns: df_sub['Invoice Date_BOOKS']=safe_date_format(df_sub['Invoice Date_BOOKS'])
         if 'Invoice Date_GST'   in df_sub.columns: df_sub['Invoice Date_GST']  =safe_date_format(df_sub['Invoice Date_GST'])
-        df_sub['Diff_Taxable']=df_sub['Taxable Value_BOOKS'].fillna(0)-df_sub['Taxable Value_GST'].fillna(0)
+        df_sub['Diff_Taxable']=(
+            df_sub['IGST_BOOKS'].fillna(0)+df_sub['CGST_BOOKS'].fillna(0)+df_sub['SGST_BOOKS'].fillna(0)
+        ) - (
+            df_sub['IGST_GST'].fillna(0)+df_sub['CGST_GST'].fillna(0)+df_sub['SGST_GST'].fillna(0)
+        )
         df_sub['Diff_IGST']=df_sub['IGST_BOOKS'].fillna(0)-df_sub['IGST_GST'].fillna(0)
         df_sub['Diff_CGST']=df_sub['CGST_BOOKS'].fillna(0)-df_sub['CGST_GST'].fillna(0)
         df_sub['Diff_SGST']=df_sub['SGST_BOOKS'].fillna(0)-df_sub['SGST_GST'].fillna(0)

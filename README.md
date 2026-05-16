@@ -30,9 +30,9 @@ High-level execution steps (what happens when you run)
     - Applies manual links (if any).
     - Creates keys (K1..K5) and runs ordered merge passes via `perform_merge_pass`:
       - Exact (GSTIN+Invoice+Date) → `Matched`.
-      - Date mismatch → `AI Matched (Date Mismatch)`.
-      - Invoice mismatch → `AI Matched (Invoice Mismatch)`.
-      - Numeric/value-based matches → `AI Matched (Mismatch)`.
+      - Date mismatch → `Smart Matched (Date Mismatch)`.
+      - Invoice mismatch → `Smart Matched (Invoice Mismatch)`.
+      - Numeric/value-based matches → `Smart Matched (Mismatch)`.
       - Optional smart suggestions (Inv+Value, Date+Value, value-neighbors) → `Suggestion`.
       - Group matching by GSTIN totals → `Suggestion (Group Match)`.
     - Leftovers labelled: "Invoices Not in GSTR-2B" or "Invoices Not in Purchase Books".

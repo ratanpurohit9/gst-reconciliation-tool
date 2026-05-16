@@ -188,7 +188,7 @@ def run_reconciliation(df_books, df_gst, tolerance, manual_pairs, smart_mode_ena
     books_left['K2'] = books_left['GSTIN'].astype(str) + "_" + books_left['Clean_Inv']
     gst_left['K2']   = gst_left['GSTIN'].astype(str)   + "_" + gst_left['Clean_Inv']
     matched_2, books_left, gst_left = perform_merge_pass(
-        books_left, gst_left, 'K2', 'AI Matched (Date Mismatch)', 'Date Mismatch',
+        books_left, gst_left, 'K2', 'Smart Matched (Date Mismatch)', 'Date Mismatch',
         check_value_tolerance=True, tolerance=tolerance, enforce_one_to_one=True, check_fy=True
     )
     results.append(matched_2)
@@ -198,7 +198,7 @@ def run_reconciliation(df_books, df_gst, tolerance, manual_pairs, smart_mode_ena
     books_left['K3'] = books_left['GSTIN'].astype(str) + "_" + books_left['Date_Str']
     gst_left['K3']   = gst_left['GSTIN'].astype(str)   + "_" + gst_left['Date_Str']
     matched_3, books_left, gst_left = perform_merge_pass(
-        books_left, gst_left, 'K3', 'AI Matched (Invoice Mismatch)', 'Invoice Mismatch',
+        books_left, gst_left, 'K3', 'Smart Matched (Invoice Mismatch)', 'Invoice Mismatch',
         check_value_tolerance=True, tolerance=tolerance, enforce_one_to_one=True
     )
     results.append(matched_3)
@@ -212,7 +212,7 @@ def run_reconciliation(df_books, df_gst, tolerance, manual_pairs, smart_mode_ena
     b_invalid = books_left[books_left['Num_Inv'] == '']
     g_invalid = gst_left[gst_left['Num_Inv'] == '']
     matched_4, b_rem, g_rem = perform_merge_pass(
-        b_valid, g_valid, 'K4', 'AI Matched (Mismatch)', 'Value Mismatch',
+        b_valid, g_valid, 'K4', 'Smart Matched (Mismatch)', 'Value Mismatch',
         check_value_tolerance=False, enforce_one_to_one=True
     )
     results.append(matched_4)

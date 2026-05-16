@@ -224,8 +224,8 @@ MODULES = [
         "num": "Module 02",
         "icon": "query_stats",
         "name": "GSTR-2B vs Purchase Register",
-        "desc": "Match GSTR-2B portal data against your Purchase Register with fuzzy AI matching and group invoice detection.",
-        "tags": ["B2B", "B2BA", "CDNR", "Fuzzy AI"],
+        "desc": "Match GSTR-2B portal data against your Purchase Register with fuzzy Smart matching and group invoice detection.",
+        "tags": ["B2B", "B2BA", "CDNR", "Fuzzy Logic"],
         "active": True,
     },
     {
@@ -357,7 +357,7 @@ def render_dashboard():
                 </div>
                 <div class="feature-item">
                     <span class="material-symbols-outlined">psychology</span>
-                    <div><div class="feature-title">AI Matching</div><div class="feature-sub">Fuzzy logic algorithms match records even with minor discrepancies.</div></div>
+                    <div><div class="feature-title">Smart Matching</div><div class="feature-sub">Fuzzy logic algorithms match records even with minor discrepancies.</div></div>
                 </div>
             </div>
         </div>

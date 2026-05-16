@@ -78,7 +78,7 @@ STATUS_CONFIG = {
         "desc":   "Invoice is reflecting in GSTR-2B (Portal) but is NOT found in our Purchase Register. This is an unreconciled entry requiring verification.",
         "action": "Please provide proof of delivery / invoice copy. If uploaded in error, issue a Credit Note immediately.",
     },
-    "AI Matched (Date Mismatch)": {
+    "Smart Matched (Date Mismatch)": {
         "label":  "DATE MISMATCH",
         "color":  MID_BLUE,
         "bg":     BG_INFO,
@@ -86,7 +86,7 @@ STATUS_CONFIG = {
         "desc":   "Invoice matched by value but the Invoice Date differs between your GSTR-1 filing and our Purchase Records.",
         "action": "Please amend the invoice date in your GSTR-1 to match our Purchase Records.",
     },
-    "AI Matched (Invoice Mismatch)": {
+    "Smart Matched (Invoice Mismatch)": {
         "label":  "INVOICE NUMBER MISMATCH",
         "color":  MID_BLUE,
         "bg":     BG_INFO,
@@ -94,7 +94,7 @@ STATUS_CONFIG = {
         "desc":   "Invoice matched by value & date but the Invoice Number differs between your GSTR-1 filing and our Purchase Records. Each row shows: 📘 Our Books Inv No. (top, in blue) and 📋 Your Portal Inv No. as filed in GSTR-1 (below, in red). Please amend your GSTR-1 to use the Books invoice number.",
         "action": "Please amend the invoice number in your GSTR-1. Use the 📘 Books number (shown in blue) instead of the 📋 Portal number (shown in red) in the table above.",
     },
-    "AI Matched (Mismatch)": {
+    "Smart Matched (Mismatch)": {
         "label":  "VALUE MISMATCH",
         "color":  ACCENT_RED,
         "bg":     BG_WARN,
@@ -282,9 +282,9 @@ def _summary_box(inv_count, tot_tax, tot_igst, tot_cgst, tot_sgst, status_counts
     STATUS_LABELS = {
         "Invoices Not in GSTR-2B":        ("NOT IN 2B",    ACCENT_RED),
         "Invoices Not in Purchase Books":  ("NOT IN BOOKS", ACCENT_GOLD),
-        "AI Matched (Mismatch)":           ("VALUE MISMATCH", ACCENT_RED),
-        "AI Matched (Date Mismatch)":      ("DATE MISMATCH",  MID_BLUE),
-        "AI Matched (Invoice Mismatch)":   ("INV NO. MISMATCH",MID_BLUE),
+        "Smart Matched (Mismatch)":           ("VALUE MISMATCH", ACCENT_RED),
+        "Smart Matched (Date Mismatch)":      ("DATE MISMATCH",  MID_BLUE),
+        "Smart Matched (Invoice Mismatch)":   ("INV NO. MISMATCH",MID_BLUE),
         "Matched (Tax Error)":             ("TAX ERROR",    ACCENT_GOLD),
         "Suggestion":                      ("SUGGESTION",   MID_BLUE),
         "Suggestion (Group Match)":        ("GROUP MATCH",  MID_BLUE),
@@ -578,9 +578,9 @@ def create_vendor_pdf(df, vendor_name, company_name, gst_in_company):
     elements.append(HRFlowable(width=W, thickness=1.5, color=MID_BLUE))
     elements.append(Spacer(1,8))
 
-    ORDER=["Invoices Not in GSTR-2B","AI Matched (Mismatch)","Matched (Tax Error)",
-            "Invoices Not in Purchase Books","AI Matched (Date Mismatch)",
-            "AI Matched (Invoice Mismatch)","Suggestion (Group Match)","Suggestion","Manually Linked"]
+    ORDER=["Invoices Not in GSTR-2B","Smart Matched (Mismatch)","Matched (Tax Error)",
+            "Invoices Not in Purchase Books","Smart Matched (Date Mismatch)",
+            "Smart Matched (Invoice Mismatch)","Suggestion (Group Match)","Suggestion","Manually Linked"]
     for st in sorted(groups.keys(), key=lambda s: ORDER.index(s) if s in ORDER else 99):
         for el in _section(st, groups[st], W):
             elements.append(el)
@@ -644,11 +644,11 @@ def create_itc_risk_pdf(df, company_name, gstin, period, fy):
 
     STATUS_LABELS = {
         "Invoices Not in GSTR-2B":        ("ITC BLOCKED — Missing from Portal",  ACCENT_RED),
-        "AI Matched (Mismatch)":           ("Value Mismatch",                     ACCENT_RED),
+        "Smart Matched (Mismatch)":           ("Value Mismatch",                     ACCENT_RED),
         "Matched (Tax Error)":             ("Tax Breakup Error",                  ACCENT_GOLD),
         "Invoices Not in Purchase Books":  ("Unidentified Portal Entry",          ACCENT_GOLD),
-        "AI Matched (Date Mismatch)":      ("Date Mismatch",                      MID_BLUE),
-        "AI Matched (Invoice Mismatch)":   ("Invoice No. Mismatch",               MID_BLUE),
+        "Smart Matched (Date Mismatch)":      ("Date Mismatch",                      MID_BLUE),
+        "Smart Matched (Invoice Mismatch)":   ("Invoice No. Mismatch",               MID_BLUE),
         "Suggestion":                      ("Possible Match — Needs Review",      MID_BLUE),
         "Manually Linked":                 ("Manually Linked",                    ACCENT_GRN),
     }
@@ -966,7 +966,7 @@ _ACTION_MAP = {
             "in GSTR-2B. Risk: ITC disallowance under Section 16(2)(aa) of CGST Act."
         ),
     },
-    "AI Matched (Mismatch)": {
+    "Smart Matched (Mismatch)": {
         "label":  "VALUE MISMATCH — Invoice found but amounts differ",
         "color":  "#D97706",
         "action": (
@@ -984,7 +984,7 @@ _ACTION_MAP = {
             "GSTR-1. Wrong ITC head claimed can cause IGST/CGST ledger mismatch in GSTR-3B."
         ),
     },
-    "AI Matched (Date Mismatch)": {
+    "Smart Matched (Date Mismatch)": {
         "label":  "DATE MISMATCH — Invoice matched but date differs between Books and Portal",
         "color":  "#1352C9",
         "action": (
@@ -993,7 +993,7 @@ _ACTION_MAP = {
             "Financial Year assignment may be affected if date crosses April boundary."
         ),
     },
-    "AI Matched (Invoice Mismatch)": {
+    "Smart Matched (Invoice Mismatch)": {
         "label":  "INVOICE NUMBER MISMATCH — Amounts match but invoice numbers differ",
         "color":  "#1352C9",
         "action": (
