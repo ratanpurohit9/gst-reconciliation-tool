@@ -2541,6 +2541,26 @@ elif st.session_state.app_stage == 'results':
             if 'Matched' in st:       return 100.0
             return 0.0
         result_display['Match_Confidence'] = result_display.apply(_backfill_confidence, axis=1)
+    if 'Match_Reason' not in result_display.columns:
+        def _backfill_reason(row):
+            status = str(row.get('Recon_Status', ''))
+            if status == 'Invoices Not in GSTR-2B':
+                return 'No matching entry found in GSTR-2B. Possible missing ITC claim.'
+            if status == 'Invoices Not in Purchase Books':
+                return 'Present in GSTR-2B but absent from Purchase Books. Possible duplicate or unreported invoice.'
+            if 'Group Match' in status:
+                return 'Group match by GSTIN total value. Individual invoices are not confirmed.'
+            if 'Manual' in status:
+                return 'Manual match selected by user. Values should be verified.'
+            return 'Reason unavailable for older saved reconciliation. Re-run reconciliation to generate a data-driven reason.'
+        result_display['Match_Reason'] = result_display.apply(_backfill_reason, axis=1)
+    def _detail_money(val):
+        try:
+            if pd.isna(val):
+                return "Rs.0.00"
+            return f"Rs.{float(val):,.2f}"
+        except Exception:
+            return "Rs.0.00"
 
     tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
         "📊 Dashboard & Scorecard",
@@ -3108,6 +3128,7 @@ elif st.session_state.app_stage == 'results':
                 column_config={
                     "Recon_Status":        st.column_config.TextColumn("Status", width="medium"),
                     "Match_Confidence":    st.column_config.ProgressColumn("Smart Confidence %", format="%.1f%%", min_value=0, max_value=100, width="small"),
+                    "Match_Reason":        st.column_config.TextColumn("Match Reason", width="large"),
                     "Taxable Value_BOOKS": st.column_config.NumberColumn("Books Taxable", format="₹ %.2f"),
                     "Taxable Value_GST":   st.column_config.NumberColumn("Portal Taxable", format="₹ %.2f"),
                     "Final_Taxable":       st.column_config.NumberColumn("Final Taxable", format="₹ %.2f"),
@@ -3124,11 +3145,36 @@ elif st.session_state.app_stage == 'results':
                 df_view, use_container_width=True,
                 column_config={
                     "Recon_Status":        st.column_config.TextColumn("Status", width="medium"),
+                    "Match_Confidence":    st.column_config.ProgressColumn("Smart Confidence %", format="%.1f%%", min_value=0, max_value=100, width="small"),
+                    "Match_Reason":        st.column_config.TextColumn("Match Reason", width="large"),
                     "Taxable Value_BOOKS": st.column_config.NumberColumn("Books Taxable", format="₹ %.2f"),
                     "Taxable Value_GST":   st.column_config.NumberColumn("Portal Taxable", format="₹ %.2f"),
                     "Final_Taxable":       st.column_config.NumberColumn("Final Taxable", format="₹ %.2f"),
                 }
             )
+
+        if 'Match_Reason' in df_view.columns and not df_view.empty:
+            st.markdown("### Match Details")
+            detail_df = df_view.head(100).copy()
+            if len(df_view) > len(detail_df):
+                st.caption(f"Showing match details for first {len(detail_df)} visible row(s). Use filters/search to inspect a specific row.")
+            for display_idx, (_, row) in enumerate(detail_df.iterrows(), 1):
+                inv_ref = row.get('Invoice Number_BOOKS') or row.get('Invoice Number_GST') or 'No invoice number'
+                status_ref = row.get('Recon_Status', 'Status unavailable')
+                with st.expander(f"Row {display_idx} - {inv_ref} | {status_ref}"):
+                    st.markdown(f"**Reason:** {row.get('Match_Reason', '')}")
+                    st.markdown(f"**Confidence:** {float(row.get('Match_Confidence', 0) or 0):.1f}%")
+                    detail_col1, detail_col2 = st.columns(2)
+                    with detail_col1:
+                        st.markdown("**Books Side**")
+                        st.write(f"Invoice: {row.get('Invoice Number_BOOKS', '')}")
+                        st.write(f"Date: {row.get('Invoice Date_BOOKS', '')}")
+                        st.write(f"Value: {_detail_money(row.get('Taxable Value_BOOKS', 0))}")
+                    with detail_col2:
+                        st.markdown("**GSTR-2B Side**")
+                        st.write(f"Invoice: {row.get('Invoice Number_GST', '')}")
+                        st.write(f"Date: {row.get('Invoice Date_GST', '')}")
+                        st.write(f"Value: {_detail_money(row.get('Taxable Value_GST', 0))}")
 
     # ─────────────────────────────────────────────────────
     # TAB 4 — SUPPLIER WISE

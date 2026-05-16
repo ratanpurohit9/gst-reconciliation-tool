@@ -120,6 +120,10 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
     fmt_red_hdr  = _f(bold=True,bg_color='#C00000',border=1,font_color='white',align='center')
     fmt_bold     = _f(bold=True)
     fmt_date_col = _f(align='center',valign='vcenter')
+    fmt_reason_wrap = _f(text_wrap=True,valign='top',border=1)
+    fmt_conf_green  = _f(bg_color='#E2F0D9',font_color='#375623',border=1,align='center',valign='vcenter',num_format='0.0')
+    fmt_conf_yellow = _f(bg_color='#FFF2CC',font_color='#7F6000',border=1,align='center',valign='vcenter',num_format='0.0')
+    fmt_conf_red    = _f(bg_color='#F4CCCC',font_color='#990000',border=1,align='center',valign='vcenter',num_format='0.0')
 
     def write_meta(ws, title, cols):
         ws.write(0,4,"GSTIN:",fmt_bold);     ws.write(0,5,company_gstin)
@@ -368,9 +372,9 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
         '#', 'Name of Party', 'GSTIN',
         'Inv No (Books)', 'Date (Books)', 'Taxable (Books)', 'IGST (B)', 'CGST (B)', 'SGST (B)',
         'Inv No (Portal)', 'Date (Portal)', 'Taxable (Portal)', 'IGST (P)', 'CGST (P)', 'SGST (P)',
-        'Diff Tax Amount', 'Diff GST', 'Status',
+        'Diff Tax Amount', 'Diff GST', 'Status', 'Confidence', 'Match Reason',
     ]
-    TOTAL_COLS = len(REC_COLS)  # 18
+    TOTAL_COLS = len(REC_COLS)
     ws_sum.set_row(7,6)
     ws_sum.set_row(8,18)
     ws_sum.write(8, 0,'#',       FHDR_IDX)
@@ -379,6 +383,7 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
     ws_sum.merge_range(8,9,8,14, 'GSTR-2B  (Portal)',          FGRP_GT)
     ws_sum.merge_range(8,15,8,16,'DIFFERENCE (Books − Portal)', FGRP_DF)
     ws_sum.write(8,17, 'STATUS', FGRP_ST)
+    ws_sum.merge_range(8,18,8,19, 'AUDIT TRAIL', FGRP_ST)
     ws_sum.set_row(9,18)
     for ci,h in enumerate(REC_COLS):
         ws_sum.write(9, ci, h, FHDR_COL)
@@ -439,6 +444,15 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
         # Status pill
         fmt_st = _row_fmt(status, num=False, bold=True)
         ws_sum.write(excel_row, 17, status, fmt_st)
+        conf = _n(row.get('Match_Confidence', 0))
+        if conf >= 100:
+            fmt_conf = fmt_conf_green
+        elif conf >= 70:
+            fmt_conf = fmt_conf_yellow
+        else:
+            fmt_conf = fmt_conf_red
+        ws_sum.write(excel_row, 18, conf, fmt_conf)
+        ws_sum.write(excel_row, 19, _v(row.get('Match_Reason','')), fmt_reason_wrap)
 
     total_data_rows = len(df_for_reco)
 
@@ -461,6 +475,8 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
     ws_sum.write(tot_row,15, d_tax_tot, FTOT)
     ws_sum.write(tot_row,16, d_gst_tot, FTOT)
     ws_sum.write(tot_row,17, f'{total_data_rows} records', FTOT_L)
+    ws_sum.write(tot_row,18, '', FTOT_L)
+    ws_sum.write(tot_row,19, '', FTOT_L)
     ws_sum.set_row(tot_row,20)
 
     # ── Column widths ──────────────────────────────────────────────────────────
@@ -475,6 +491,8 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
     ws_sum.set_column(11,14,13)   # Taxable IGST CGST SGST Portal
     ws_sum.set_column(15,16,14)   # Diff
     ws_sum.set_column(17,17,28)   # Status
+    ws_sum.set_column(18,18,12)   # Confidence
+    ws_sum.set_column(19,19,60, fmt_reason_wrap)   # Match reason
 
     row_ptr = tot_row + 2
 
@@ -482,21 +500,21 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
     display_cols=['GSTIN','Name of Party',
         'Invoice Number_BOOKS','Invoice Date_BOOKS','Taxable Value_BOOKS','IGST_BOOKS','CGST_BOOKS','SGST_BOOKS',
         'Invoice Number_GST','Invoice Date_GST','Taxable Value_GST','IGST_GST','CGST_GST','SGST_GST',
-        'Diff_Taxable','Diff_IGST','Diff_CGST','Diff_SGST','Recon_Status','Match_Logic']
+        'Diff_Taxable','Diff_IGST','Diff_CGST','Diff_SGST','Recon_Status','Match_Confidence','Match_Logic','Match_Reason']
     headers=['GSTIN','Name of Party',
         'Inv No (Books)','Date','Taxable','IGST','CGST','SGST',
         'Inv No (GSTR-2B)','Date','Taxable','IGST','CGST','SGST',
-        'Diff Tax Amount','Diff IGST','Diff CGST','Diff SGST','Status','Match Logic']
+        'Diff Tax Amount','Diff IGST','Diff CGST','Diff SGST','Status','Confidence','Match Logic','Match Reason']
     sug_display_cols=['GSTIN','Name of Party',
         'Invoice Number_BOOKS','Invoice Date_BOOKS','Taxable Value_BOOKS','IGST_BOOKS','CGST_BOOKS','SGST_BOOKS',
         'GSTIN_GST','Name of Party_GST','GST_Remark',
         'Invoice Number_GST','Invoice Date_GST','Taxable Value_GST','IGST_GST','CGST_GST','SGST_GST',
-        'Diff_Taxable','Diff_IGST','Diff_CGST','Diff_SGST','Recon_Status','Match_Logic']
+        'Diff_Taxable','Diff_IGST','Diff_CGST','Diff_SGST','Recon_Status','Match_Confidence','Match_Logic','Match_Reason']
     sug_headers=['GSTIN','Name of Party',
         'Inv No (Books)','Date','Taxable','IGST','CGST','SGST',
         'GSTIN (2B)','Name (2B)','GSTIN Status',
         'Inv No (GSTR-2B)','Date','Taxable','IGST','CGST','SGST',
-        'Diff Tax Amount','Diff IGST','Diff CGST','Diff SGST','Status','Match Logic']
+        'Diff Tax Amount','Diff IGST','Diff CGST','Diff SGST','Status','Confidence','Match Logic','Match Reason']
 
     sheets={
         'All Data':      full_df,
@@ -529,21 +547,39 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
         ws=writer.sheets[name]
         write_meta(ws,f"Report :: {name}",len(heads)-1)
         ws.freeze_panes(7,4)
+        conf_col = heads.index('Confidence') if 'Confidence' in heads else None
+        reason_col = heads.index('Match Reason') if 'Match Reason' in heads else None
         if name=='Suggestions':
             ws.merge_range('C6:H6',"As Per Books [A]",fmt_orange)
             ws.merge_range('I6:Q6',"As Per GSTR-2B [B] (Details)",fmt_green)
             ws.merge_range('R6:U6',"Difference [A-B]",fmt_gray)
             for i,h in enumerate(heads):
-                ws.write(6,i,h,fmt_orange if 2<=i<=7 else fmt_green if 8<=i<=16 else fmt_gray if 17<=i<=20 else fmt_yellow if i==22 else fmt_blue)
+                ws.write(6,i,h,fmt_orange if 2<=i<=7 else fmt_green if 8<=i<=16 else fmt_gray if 17<=i<=20 else fmt_yellow if h in ('Match Logic','Match Reason') else fmt_blue)
             ws.set_column(3,3,12,fmt_date_col); ws.set_column(12,12,12,fmt_date_col); ws.set_column(8,10,18)
         else:
             ws.merge_range('C6:H6',"As Per Books [A]",fmt_orange)
             ws.merge_range('I6:N6',"As Per GSTR-2B [B]",fmt_green)
             ws.merge_range('O6:R6',"Difference [A-B]",fmt_gray)
             for i,h in enumerate(heads):
-                ws.write(6,i,h,fmt_orange if 2<=i<=7 else fmt_green if 8<=i<=13 else fmt_gray if 14<=i<=17 else fmt_yellow if i==19 else fmt_blue)
+                ws.write(6,i,h,fmt_orange if 2<=i<=7 else fmt_green if 8<=i<=13 else fmt_gray if 14<=i<=17 else fmt_yellow if h in ('Match Logic','Match Reason') else fmt_blue)
             ws.set_column(3,3,12,fmt_date_col); ws.set_column(9,9,12,fmt_date_col)
         ws.set_column(0,1,20); ws.set_column(2,2,18); ws.set_column(8,8,18)
+        if conf_col is not None and len(df_export) > 0:
+            first_row, last_row = 7, 7 + len(df_export) - 1
+            ws.conditional_format(first_row, conf_col, last_row, conf_col, {
+                'type': 'cell', 'criteria': '>=', 'value': 100, 'format': fmt_conf_green
+            })
+            ws.conditional_format(first_row, conf_col, last_row, conf_col, {
+                'type': 'cell', 'criteria': 'between', 'minimum': 70, 'maximum': 99.999, 'format': fmt_conf_yellow
+            })
+            ws.conditional_format(first_row, conf_col, last_row, conf_col, {
+                'type': 'cell', 'criteria': '<', 'value': 70, 'format': fmt_conf_red
+            })
+            ws.set_column(conf_col, conf_col, 12)
+        if reason_col is not None:
+            ws.set_column(reason_col, reason_col, 60, fmt_reason_wrap)
+            for ridx, value in enumerate(df_export['Match Reason'].fillna('')):
+                ws.write(7 + ridx, reason_col, value, fmt_reason_wrap)
 
     writer.close()
     return output.getvalue()

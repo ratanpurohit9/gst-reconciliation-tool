@@ -29,9 +29,97 @@ def numeric_invoice_clean(val):
     val = smart_invoice_clean(val)
     return "".join(char for char in val if char.isdigit())
 
+def _reason_date(val):
+    if pd.isna(val) or str(val).strip() == '':
+        return 'blank'
+    try:
+        return pd.to_datetime(val, dayfirst=True, errors='coerce').strftime('%d/%m/%Y')
+    except Exception:
+        return str(val)
+
+def _reason_text(val):
+    if pd.isna(val) or str(val).strip() == '':
+        return 'blank'
+    return str(val).strip()
+
+def _reason_money(val):
+    try:
+        if pd.isna(val):
+            return "Rs.0.00"
+        return f"Rs.{float(val):,.2f}"
+    except Exception:
+        return "Rs.0.00"
+
+def _reason_number(val):
+    try:
+        if pd.isna(val):
+            return 0.0
+        return float(val)
+    except Exception:
+        return 0.0
+
+def _build_match_reason(row, logic_label):
+    books_inv = _reason_text(row.get('Invoice Number_BOOKS', ''))
+    gst_inv   = _reason_text(row.get('Invoice Number_GST', ''))
+    books_dt  = _reason_date(row.get('Invoice Date_BOOKS', ''))
+    gst_dt    = _reason_date(row.get('Invoice Date_GST', ''))
+    books_val = _reason_number(row.get('Taxable Value_BOOKS', 0))
+    gst_val   = _reason_number(row.get('Taxable Value_GST', 0))
+    diff      = abs(books_val - gst_val)
+    gstin_b   = _reason_text(row.get('GSTIN_BOOKS', row.get('GSTIN', '')))
+    gstin_g   = _reason_text(row.get('GSTIN_GST', row.get('GSTIN', '')))
+
+    if logic_label == 'Exact Match':
+        return (
+            "Exact match on GSTIN, invoice number, date, and taxable value "
+            f"(GSTIN={gstin_b}, Invoice={books_inv}, Date={books_dt}, Taxable={_reason_money(books_val)})."
+        )
+    if logic_label == 'Date Mismatch':
+        return (
+            "Matched on GSTIN and invoice number. "
+            f"Date differs - Books: {books_dt}, 2B: {gst_dt}. "
+            f"Taxable value difference: {_reason_money(diff)}."
+        )
+    if logic_label == 'Invoice Mismatch':
+        return (
+            "Matched on GSTIN and date. "
+            f"Invoice number differs - Books: {books_inv}, 2B: {gst_inv}. "
+            f"Taxable value difference: {_reason_money(diff)}."
+        )
+    if logic_label == 'Value Mismatch':
+        return (
+            "Matched on GSTIN and invoice number. "
+            f"Taxable value differs by {_reason_money(diff)} - "
+            f"Books: {_reason_money(books_val)}, 2B: {_reason_money(gst_val)}."
+        )
+    if logic_label == 'Inv No + Val Match':
+        return (
+            "Suggested match on invoice number and taxable value. "
+            f"GSTIN unconfirmed - Books GSTIN: {gstin_b}, 2B GSTIN: {gstin_g}, Invoice: {books_inv}."
+        )
+    if logic_label == 'Date + Val Match':
+        return (
+            "Suggested match on date and taxable value. "
+            f"Invoice number unconfirmed - Books: {books_inv}, 2B: {gst_inv}, Date: {books_dt}."
+        )
+    if logic_label == 'Value Match (Approx)':
+        return (
+            "Suggested match on nearby taxable value. "
+            f"Value differs by {_reason_money(diff)} (possible rounding) - "
+            f"Books: {_reason_money(books_val)}, 2B: {_reason_money(gst_val)}. "
+            "GSTIN and invoice number are unconfirmed."
+        )
+    return (
+        "Matched by reconciliation engine using available invoice fields. "
+        f"Books invoice: {books_inv}, 2B invoice: {gst_inv}, taxable difference: {_reason_money(diff)}."
+    )
+
 def perform_merge_pass(df_left, df_right, key_col, status_label, logic_label,
                        check_value_tolerance=False, tolerance=5.0, enforce_one_to_one=False,
                        check_fy=False):
+
+    if df_left.empty or df_right.empty:
+        return pd.DataFrame(), df_left.copy(), df_right.copy()
 
     if enforce_one_to_one:
         df_left  = df_left.copy()
@@ -72,6 +160,7 @@ def perform_merge_pass(df_left, df_right, key_col, status_label, logic_label,
         matched = potential[valid_mask].copy()
         matched['Recon_Status'] = status_label
         matched['Match_Logic']  = logic_label
+        matched['Match_Reason'] = matched.apply(lambda r: _build_match_reason(r, logic_label), axis=1)
         # Confidence score: 100 for exact, reduced by diff ratio and pass type
         if len(matched) > 0:
             _max_taxable = matched[['Taxable Value_BOOKS','Taxable Value_GST']].max(axis=1).replace(0, 1)
@@ -136,6 +225,11 @@ def run_reconciliation(df_books, df_gst, tolerance, manual_pairs, smart_mode_ena
                 combined[k + "_GST"] = v
             combined['Recon_Status'] = "Manually Linked"
             combined['Match_Logic']  = "User Selection"
+            combined['Match_Reason'] = (
+                "Manual match selected by user. "
+                f"Books invoice {_reason_text(combined.get('Invoice Number_BOOKS', ''))} was linked to "
+                f"2B invoice {_reason_text(combined.get('Invoice Number_GST', ''))}; values should be verified."
+            )
             manual_rows.append(combined)
 
     matched_manual = pd.DataFrame(manual_rows) if manual_rows else pd.DataFrame()
@@ -289,17 +383,31 @@ def run_reconciliation(df_books, df_gst, tolerance, manual_pairs, smart_mode_ena
     if match_gstins:
         b_group_match = books_left[books_left['GSTIN'].isin(match_gstins)].copy()
         g_group_match = gst_left[gst_left['GSTIN'].isin(match_gstins)].copy()
+        group_reasons = {}
+        for gstin in match_gstins:
+            vendor = name_map.get(gstin, 'Unknown')
+            n_invoices = max(int(b_cnt.get(gstin, 0)), int(g_cnt.get(gstin, 0)))
+            group_reasons[gstin] = (
+                f"Group match across {n_invoices} invoices for {vendor}. "
+                "Total taxable value matched within tolerance, but individual invoices are not confirmed."
+            )
 
         # Add Suffix FIRST, then status columns (prevents Recon_Status_BOOKS)
         b_group_match = b_group_match.add_suffix('_BOOKS')
         b_group_match['Recon_Status']    = "Suggestion (Group Match)"
         b_group_match['Match_Logic']     = "Total Value Matches"
         b_group_match['Match_Confidence']= 60.0
+        b_group_match['Match_Reason']    = b_group_match['GSTIN_BOOKS'].map(group_reasons).fillna(
+            "Group match by GSTIN total value. Individual invoices are not confirmed."
+        )
 
         g_group_match = g_group_match.add_suffix('_GST')
         g_group_match['Recon_Status']    = "Suggestion (Group Match)"
         g_group_match['Match_Logic']     = "Total Value Matches"
         g_group_match['Match_Confidence']= 60.0
+        g_group_match['Match_Reason']    = g_group_match['GSTIN_GST'].map(group_reasons).fillna(
+            "Group match by GSTIN total value. Individual invoices are not confirmed."
+        )
 
         results.append(b_group_match)
         results.append(g_group_match)
@@ -313,11 +421,13 @@ def run_reconciliation(df_books, df_gst, tolerance, manual_pairs, smart_mode_ena
     books_left['Recon_Status']    = "Invoices Not in GSTR-2B"
     books_left['Match_Logic']     = "Unmatched"
     books_left['Match_Confidence']= 0.0
+    books_left['Match_Reason']    = "No matching entry found in GSTR-2B. Possible missing ITC claim."
 
     gst_left = gst_left.add_suffix('_GST')
     gst_left['Recon_Status']    = "Invoices Not in Purchase Books"
     gst_left['Match_Logic']     = "Unmatched"
     gst_left['Match_Confidence']= 0.0
+    gst_left['Match_Reason']    = "Present in GSTR-2B but absent from Purchase Books. Possible duplicate or unreported invoice."
 
     results.append(books_left)
     results.append(gst_left)
@@ -332,6 +442,20 @@ def run_reconciliation(df_books, df_gst, tolerance, manual_pairs, smart_mode_ena
         (abs(final_df['CGST_BOOKS'].fillna(0) - final_df['CGST_GST'].fillna(0)) > 1.0)
     )
     final_df.loc[mask_match & mask_taxable_ok & mask_tax_diff, 'Recon_Status'] = "Matched (Tax Error)"
+    if mask_match.any():
+        _tax_error_reason = (
+            " Tax breakup differs - IGST diff: " +
+            (final_df['IGST_BOOKS'].fillna(0) - final_df['IGST_GST'].fillna(0)).abs().map(_reason_money) +
+            ", CGST diff: " +
+            (final_df['CGST_BOOKS'].fillna(0) - final_df['CGST_GST'].fillna(0)).abs().map(_reason_money) +
+            ", SGST diff: " +
+            (final_df['SGST_BOOKS'].fillna(0) - final_df['SGST_GST'].fillna(0)).abs().map(_reason_money) +
+            "."
+        )
+        final_df.loc[mask_match & mask_taxable_ok & mask_tax_diff, 'Match_Reason'] = (
+            final_df.loc[mask_match & mask_taxable_ok & mask_tax_diff, 'Match_Reason'].fillna('Matched invoice found.') +
+            _tax_error_reason[mask_match & mask_taxable_ok & mask_tax_diff]
+        )
 
     # Coalesce Columns
     final_df['GSTIN'] = final_df['GSTIN_BOOKS'].fillna(final_df['GSTIN_GST'])
@@ -343,6 +467,10 @@ def run_reconciliation(df_books, df_gst, tolerance, manual_pairs, smart_mode_ena
 
     final_df['Name of Party'] = final_df['Name of Party'].fillna(
         final_df['GSTIN'].map(name_map)).fillna('Unknown')
+
+    if 'Match_Reason' not in final_df.columns:
+        final_df['Match_Reason'] = ''
+    final_df['Match_Reason'] = final_df['Match_Reason'].fillna('')
 
     drop_cols = ['K1','K2','K3','K4','K5a','K5b','K5c','Diff','dedup_id','Num_Inv_BOOKS','Num_Inv_GST']
     final_df.drop(columns=[c for c in drop_cols if c in final_df.columns], inplace=True)
