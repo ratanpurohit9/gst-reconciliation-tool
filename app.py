@@ -1591,7 +1591,8 @@ def _uploaded_files_list(uploaded):
 
 def _bytes_upload(name, data):
     bio = io.BytesIO(data)
-    bio.name = name
+    # Keep this pathless. Streamlit's cache hasher treats a file-like .name as
+    # a filesystem path and calls getmtime(), which fails for in-memory merges.
     return bio
 
 
