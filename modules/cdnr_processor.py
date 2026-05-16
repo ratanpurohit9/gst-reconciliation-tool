@@ -471,10 +471,8 @@ def _post_process(df: pd.DataFrame, tmap: dict) -> pd.DataFrame:
     df['Name of Party'] = name_b.fillna(name_g).fillna(df['GSTIN'].map(tmap)).fillna('Unknown')
 
     # ── Diff columns (mirrors report_gen compute) ───────────
-    df['Diff_Taxable'] = (
-        (_get(df,'IGST_BOOKS').fillna(0) + _get(df,'CGST_BOOKS').fillna(0) + _get(df,'SGST_BOOKS').fillna(0)) -
-        (_get(df,'IGST_GST').fillna(0) + _get(df,'CGST_GST').fillna(0) + _get(df,'SGST_GST').fillna(0))
-    ).round(2)
+    df['Diff_Taxable'] = (_get(df,'Taxable Value_BOOKS').fillna(0) -
+                          _get(df,'Taxable Value_GST').fillna(0)).round(2)
     df['Diff_IGST']    = (_get(df,'IGST_BOOKS').fillna(0) - _get(df,'IGST_GST').fillna(0)).round(2)
     df['Diff_CGST']    = (_get(df,'CGST_BOOKS').fillna(0) - _get(df,'CGST_GST').fillna(0)).round(2)
     df['Diff_SGST']    = (_get(df,'SGST_BOOKS').fillna(0) - _get(df,'SGST_GST').fillna(0)).round(2)

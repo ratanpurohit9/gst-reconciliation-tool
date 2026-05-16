@@ -1627,6 +1627,108 @@ def _dataframe_to_xlsx_bytes(df, sheet_name="B2B"):
     return buf.getvalue()
 
 
+def _concat_nonempty_frames(frames):
+    frames = [df for df in frames if df is not None and not df.empty]
+    if not frames:
+        return None
+    return pd.concat(frames, ignore_index=True, sort=False)
+
+
+def _apply_b2ba_to_raw_gstr(df_g_raw, gst_bytes):
+    if df_g_raw is None or gst_bytes is None:
+        return df_g_raw
+    gst_file = _bytes_upload("gstr2b.xlsx", gst_bytes)
+    try:
+        gst_file.seek(0)
+        df_b2ba, status_msg = smart_read_b2ba(gst_file)
+        if df_b2ba is not None and not df_b2ba.empty:
+            st.info(f"Processing B2B Amendments... Found {len(df_b2ba)} entries in B2BA.")
+            df_g_raw, deleted_count, added_count = process_amendments(df_g_raw, df_b2ba)
+            st.success(f"B2B Amendments Applied: Removed {deleted_count} old invoices, Added {added_count} revised.")
+        elif status_msg and "Critical" in str(status_msg):
+            st.warning(status_msg)
+    except Exception as exc:
+        st.warning(f"B2BA amendment check skipped: {exc}")
+    finally:
+        try:
+            gst_file.seek(0)
+        except Exception:
+            pass
+    return df_g_raw
+
+
+def _has_cdnr_sheet(gst_bytes):
+    if not gst_bytes:
+        return False
+    gst_file = _bytes_upload("gstr2b.xlsx", gst_bytes)
+    try:
+        gst_file.seek(0)
+        xls_check = pd.ExcelFile(gst_file)
+        return any('cdnr' in s.lower() for s in xls_check.sheet_names)
+    except Exception:
+        return False
+
+
+def _extract_meta_from_bytes(gst_bytes):
+    if not gst_bytes:
+        return None
+    gst_file = _bytes_upload("gstr2b.xlsx", gst_bytes)
+    try:
+        gst_file.seek(0)
+        return extract_meta_from_readme(gst_file)
+    except Exception:
+        return None
+
+
+def _standardize_for_recon(df_b_raw, df_g_raw, books_map, gst_map):
+    books_rename_map = {v: k for k, v in books_map.items() if v != "<No Column / Blank>"}
+    gst_rename_map = {v: k for k, v in gst_map.items()}
+    df_b_clean = df_b_raw.rename(columns=books_rename_map).copy()
+    df_g_clean = df_g_raw.rename(columns=gst_rename_map).copy()
+
+    df_b_clean = standardize_invoice_numbers(df_b_clean, "Invoice Number")
+    df_g_clean = standardize_invoice_numbers(df_g_clean, "Invoice Number")
+
+    for req_field, mapped_val in books_map.items():
+        if mapped_val == "<No Column / Blank>":
+            df_b_clean[req_field] = np.nan
+
+    df_b_clean = df_b_clean[[k for k in REQUIRED_FIELDS.keys() if k in df_b_clean.columns]]
+    df_g_clean = df_g_clean[[k for k in REQUIRED_FIELDS.keys() if k in df_g_clean.columns]]
+    df_b_clean = df_b_clean.loc[:, ~df_b_clean.columns.duplicated()]
+    df_g_clean = df_g_clean.loc[:, ~df_g_clean.columns.duplicated()]
+    return df_b_clean, df_g_clean
+
+
+def _cdnr_rows_for_notices(cdnr_df):
+    if cdnr_df is None or cdnr_df.empty:
+        return pd.DataFrame()
+    df = cdnr_df.copy()
+    if "Recon_Status_CDNR" not in df.columns:
+        return pd.DataFrame()
+    df["Recon_Status"] = df["Recon_Status_CDNR"].astype(str).map(
+        lambda s: "Invoices Not in GSTR-2B" if "Not in GSTR-2B" in s
+        else "Invoices Not in Purchase Books" if "Not in Books" in s
+        else "Matched (Tax Error)" if "Tax Error" in s
+        else "Smart Matched (Mismatch)" if "Mismatch" in s
+        else "Suggestion" if "Suggestion" in s
+        else s
+    )
+    rename_map = {
+        "Note Number_BOOKS": "Invoice Number_BOOKS",
+        "Note Number_GST": "Invoice Number_GST",
+        "Note Date_BOOKS": "Invoice Date_BOOKS",
+        "Note Date_GST": "Invoice Date_GST",
+    }
+    df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns}, inplace=True)
+    df["Source_Type"] = "CDNR"
+    if "Final_Taxable" not in df.columns:
+        df["Final_Taxable"] = df.get("Taxable Value_BOOKS", pd.Series(0, index=df.index)).fillna(
+            df.get("Taxable Value_GST", pd.Series(0, index=df.index))
+        ).fillna(0)
+    return df[df["Recon_Status"].str.contains("Not in|Mismatch|Suggestion|Manual|Tax Error", na=False)].copy()
+
+
 def _prepare_books_upload(uploaded_files):
     files = _uploaded_files_list(uploaded_files)
     if len(files) == 1:
@@ -1773,44 +1875,102 @@ if st.session_state.app_stage == 'setup':
             st.markdown('</div>', unsafe_allow_html=True)
             software_profile = SOFTWARE_COLUMN_PROFILES[selected_software]
 
-            # ── File Upload — compact, single-screen layout ───────────────────
-            st.markdown("""
-            <div class="recon-upload-title">
-              <span class="recon-upload-icon blue">▤</span>
-              <span>Purchase Register</span>
-              <span class="small-pill">Books Data</span>
-            </div>
-            <div class="recon-uploader-wrap">
-            """, unsafe_allow_html=True)
-            file_books = st.file_uploader(
-                "Upload Purchase Files",
-                type=['xlsx','csv'],
-                accept_multiple_files=True,
-                key="b_up",
-                label_visibility="collapsed",
-                help=f"Upload one or more purchase register files from {selected_software}. XLSX and CSV supported."
+            recon_mode = st.radio(
+                "Reconciliation Mode",
+                ["Single period recon", "Multi period recon"],
+                horizontal=True,
+                key="recon_mode",
+                help="Use Multi period recon when two FY/period blocks must be reconciled separately before combining results."
             )
-            st.caption(f"XLSX, CSV supported · multiple periods/files allowed · From {selected_software}")
-            st.markdown("</div>", unsafe_allow_html=True)
 
-            st.markdown("""
-            <div class="recon-upload-title">
-              <span class="recon-upload-icon red">▥</span>
-              <span>GSTR-2B Portal Data</span>
-              <span class="small-pill">NIC Format</span>
-            </div>
-            <div class="recon-uploader-wrap">
-            """, unsafe_allow_html=True)
-            file_gst = st.file_uploader(
-                "Upload GSTR-2B Files",
-                type=['xlsx','csv'],
-                accept_multiple_files=True,
-                key="g_up",
-                label_visibility="collapsed",
-                help="Upload one or more GSTR-2B files downloaded from GST Portal in NIC format."
-            )
-            st.caption("Download from GST Portal · XLSX, CSV supported · multiple periods/files allowed")
-            st.markdown("</div>", unsafe_allow_html=True)
+            # ── File Upload — compact, single-screen layout ───────────────────
+            if recon_mode == "Multi period recon":
+                st.info("Each period is reconciled independently first. Final rows are then combined without cross-period GSTIN/invoice matching.")
+                p1_label = st.text_input("Period 1 label", "FY 2025-26 vs FY 2025-26", key="mp_p1_label")
+                p1c1, p1c2 = st.columns(2)
+                with p1c1:
+                    st.markdown("#### Period 1 Purchase Register")
+                    file_books_p1 = st.file_uploader(
+                        "Upload Purchase Files - Period 1",
+                        type=['xlsx','csv'],
+                        accept_multiple_files=True,
+                        key="b_up_p1",
+                        label_visibility="collapsed",
+                        help=f"Upload purchase register files for {p1_label}."
+                    )
+                with p1c2:
+                    st.markdown("#### Period 1 GSTR-2B")
+                    file_gst_p1 = st.file_uploader(
+                        "Upload GSTR-2B Files - Period 1",
+                        type=['xlsx','csv'],
+                        accept_multiple_files=True,
+                        key="g_up_p1",
+                        label_visibility="collapsed",
+                        help=f"Upload GSTR-2B files for {p1_label}."
+                    )
+                st.divider()
+                p2_label = st.text_input("Period 2 label", "FY 2026-27 vs FY 2026-27", key="mp_p2_label")
+                p2c1, p2c2 = st.columns(2)
+                with p2c1:
+                    st.markdown("#### Period 2 Purchase Register")
+                    file_books_p2 = st.file_uploader(
+                        "Upload Purchase Files - Period 2",
+                        type=['xlsx','csv'],
+                        accept_multiple_files=True,
+                        key="b_up_p2",
+                        label_visibility="collapsed",
+                        help=f"Upload purchase register files for {p2_label}."
+                    )
+                with p2c2:
+                    st.markdown("#### Period 2 GSTR-2B")
+                    file_gst_p2 = st.file_uploader(
+                        "Upload GSTR-2B Files - Period 2",
+                        type=['xlsx','csv'],
+                        accept_multiple_files=True,
+                        key="g_up_p2",
+                        label_visibility="collapsed",
+                        help=f"Upload GSTR-2B files for {p2_label}."
+                    )
+                file_books = bool(file_books_p1 and file_books_p2)
+                file_gst = bool(file_gst_p1 and file_gst_p2)
+            else:
+                st.markdown("""
+                <div class="recon-upload-title">
+                  <span class="recon-upload-icon blue">▤</span>
+                  <span>Purchase Register</span>
+                  <span class="small-pill">Books Data</span>
+                </div>
+                <div class="recon-uploader-wrap">
+                """, unsafe_allow_html=True)
+                file_books = st.file_uploader(
+                    "Upload Purchase Files",
+                    type=['xlsx','csv'],
+                    accept_multiple_files=True,
+                    key="b_up",
+                    label_visibility="collapsed",
+                    help=f"Upload one or more purchase register files from {selected_software}. XLSX and CSV supported."
+                )
+                st.caption(f"XLSX, CSV supported · multiple periods/files allowed · From {selected_software}")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+                st.markdown("""
+                <div class="recon-upload-title">
+                  <span class="recon-upload-icon red">▥</span>
+                  <span>GSTR-2B Portal Data</span>
+                  <span class="small-pill">NIC Format</span>
+                </div>
+                <div class="recon-uploader-wrap">
+                """, unsafe_allow_html=True)
+                file_gst = st.file_uploader(
+                    "Upload GSTR-2B Files",
+                    type=['xlsx','csv'],
+                    accept_multiple_files=True,
+                    key="g_up",
+                    label_visibility="collapsed",
+                    help="Upload one or more GSTR-2B files downloaded from GST Portal in NIC format."
+                )
+                st.caption("Download from GST Portal · XLSX, CSV supported · multiple periods/files allowed")
+                st.markdown("</div>", unsafe_allow_html=True)
 
         if not (file_books and file_gst):
             st.stop()
@@ -1850,18 +2010,50 @@ if st.session_state.app_stage == 'setup':
     if file_books and file_gst:
 
         # Load one or more period files and keep workbook bytes for CDNR flows.
-        df_b_raw, _books_bytes, _books_name = _prepare_books_upload(file_books)
-        df_g_raw, _gst_bytes, _gst_name = _prepare_gstr2b_upload(file_gst)
-        st.session_state['file_books_bytes'] = _books_bytes
-        st.session_state['file_gst_bytes']   = _gst_bytes
+        multi_period_enabled = st.session_state.get("recon_mode") == "Multi period recon"
+        if multi_period_enabled:
+            multi_period_inputs = []
+            _period_upload_sets = [
+                (st.session_state.get("mp_p1_label", "Period 1"), file_books_p1, file_gst_p1),
+                (st.session_state.get("mp_p2_label", "Period 2"), file_books_p2, file_gst_p2),
+            ]
+            for _label, _b_files, _g_files in _period_upload_sets:
+                _df_b, _b_bytes, _b_name = _prepare_books_upload(_b_files)
+                _df_g, _g_bytes, _g_name = _prepare_gstr2b_upload(_g_files)
+                _df_g = _apply_b2ba_to_raw_gstr(_df_g, _g_bytes)
+                multi_period_inputs.append({
+                    "label": _label,
+                    "df_b_raw": _df_b,
+                    "df_g_raw": _df_g,
+                    "books_bytes": _b_bytes,
+                    "gst_bytes": _g_bytes,
+                    "books_name": _b_name,
+                    "gst_name": _g_name,
+                })
+            df_b_raw = _concat_nonempty_frames([p["df_b_raw"] for p in multi_period_inputs])
+            df_g_raw = _concat_nonempty_frames([p["df_g_raw"] for p in multi_period_inputs])
+            _books_bytes = multi_period_inputs[0]["books_bytes"]
+            _gst_bytes = multi_period_inputs[0]["gst_bytes"]
+            _gst_name = multi_period_inputs[0]["gst_name"]
+            st.session_state["multi_period_inputs_raw"] = multi_period_inputs
+            st.session_state['file_books_bytes'] = None
+            st.session_state['file_gst_bytes'] = None
+            st.success("Multi period recon enabled: each FY/period block will run separately, then final results will be combined.")
+        else:
+            df_b_raw, _books_bytes, _books_name = _prepare_books_upload(file_books)
+            df_g_raw, _gst_bytes, _gst_name = _prepare_gstr2b_upload(file_gst)
+            df_g_raw = _apply_b2ba_to_raw_gstr(df_g_raw, _gst_bytes)
+            st.session_state['file_books_bytes'] = _books_bytes
+            st.session_state['file_gst_bytes']   = _gst_bytes
+            st.session_state.pop("multi_period_inputs_raw", None)
 
-        _books_files = _uploaded_files_list(file_books)
-        _gst_files   = _uploaded_files_list(file_gst)
-        if len(_books_files) > 1 or len(_gst_files) > 1:
-            st.success(
-                f"Combined {len(_books_files)} purchase file(s) and {len(_gst_files)} GSTR-2B file(s) "
-                "for multi-period reconciliation."
-            )
+            _books_files = _uploaded_files_list(file_books)
+            _gst_files   = _uploaded_files_list(file_gst)
+            if len(_books_files) > 1 or len(_gst_files) > 1:
+                st.success(
+                    f"Combined {len(_books_files)} purchase file(s) and {len(_gst_files)} GSTR-2B file(s) "
+                    "for single-period reconciliation."
+                )
 
         st.divider()
         final_books_map = {}
@@ -1910,33 +2102,21 @@ if st.session_state.app_stage == 'setup':
 
         _gst_workbook_file = _bytes_upload(_gst_name, _gst_bytes) if _gst_bytes else None
 
-        # B2BA amendments
-        _gst_workbook_file.seek(0)
-        df_b2ba, status_msg = smart_read_b2ba(_gst_workbook_file)
-        if df_b2ba is not None and not df_b2ba.empty:
-            st.info(f"⚡ Processing B2B Amendments... Found {len(df_b2ba)} entries in B2BA.")
-            df_g_raw, deleted_count, added_count = process_amendments(df_g_raw, df_b2ba)
-            st.success(f"✅ B2B Amendments Applied: Removed {deleted_count} old invoices, Added {added_count} revised.")
-        elif status_msg and "Critical" in str(status_msg):
-            st.warning(status_msg)
-
-        _gst_workbook_file.seek(0)
-        try:
-            _xls_check = pd.ExcelFile(_gst_workbook_file)
-            _has_cdnr  = any('cdnr' in s.lower() for s in _xls_check.sheet_names)
-        except Exception:
-            _has_cdnr  = False
-        _gst_workbook_file.seek(0)
+        _has_cdnr = any(_has_cdnr_sheet(p.get("gst_bytes")) for p in st.session_state.get("multi_period_inputs_raw", [])) if multi_period_enabled else _has_cdnr_sheet(_gst_bytes)
         if _has_cdnr:
             st.info("📋 CDNR sheet detected in GSTR-2B. Run **CDNR Reconciliation** from **Tab 2** after B2B recon.")
 
         # Auto-detect metadata
         det_fy, det_period, det_gstin, det_name = "2025 - 2026", "April", "", ""
-        meta_fy, meta_period, meta_gstin, meta_name = extract_meta_from_readme(_gst_workbook_file)
-        if meta_gstin: det_gstin  = meta_gstin
-        if meta_name:  det_name   = meta_name
-        if meta_fy:    det_fy     = meta_fy
-        if meta_period: det_period = meta_period
+        _meta_detected = _extract_meta_from_bytes(_gst_bytes)
+        if _meta_detected:
+            meta_fy, meta_period, meta_gstin, meta_name = _meta_detected
+            if meta_gstin: det_gstin  = meta_gstin
+            if meta_name:  det_name   = meta_name
+            if meta_fy:    det_fy     = meta_fy
+            if meta_period: det_period = meta_period
+        if multi_period_enabled:
+            det_period = "Multi Period"
 
         # Column Mapper
         with st.expander("🛠️ Column Mapping Configuration", expanded=False):
@@ -2136,37 +2316,40 @@ if st.session_state.app_stage == 'setup':
                     if len(invalid_gstins) > 0:
                         st.warning(f"⚠️ {len(invalid_gstins)} invalid GSTIN(s) found in Books data. They will be processed but may not match correctly.")
 
-            books_rename_map = {v: k for k, v in final_books_map.items() if v != "<No Column / Blank>"}
-            gst_rename_map   = {v: k for k, v in final_gst_map.items()}
+            multi_period_enabled = st.session_state.get("recon_mode") == "Multi period recon"
+            if multi_period_enabled:
+                clean_periods = []
+                for _p in st.session_state.get("multi_period_inputs_raw", []):
+                    _b_clean, _g_clean = _standardize_for_recon(
+                        _p["df_b_raw"], _p["df_g_raw"], final_books_map, final_gst_map
+                    )
+                    clean_periods.append({
+                        "label": _p["label"],
+                        "df_b_clean": _b_clean,
+                        "df_g_clean": _g_clean,
+                        "books_bytes": _p.get("books_bytes"),
+                        "gst_bytes": _p.get("gst_bytes"),
+                    })
+                df_b_clean = _concat_nonempty_frames([p["df_b_clean"] for p in clean_periods])
+                df_g_clean = _concat_nonempty_frames([p["df_g_clean"] for p in clean_periods])
+                st.session_state["multi_period_inputs"] = clean_periods
+            else:
+                df_b_clean, df_g_clean = _standardize_for_recon(df_b_raw, df_g_raw, final_books_map, final_gst_map)
 
-            df_b_clean = df_b_raw.rename(columns=books_rename_map)
-            df_g_clean = df_g_raw.rename(columns=gst_rename_map)
-
-            df_b_clean = standardize_invoice_numbers(df_b_clean, "Invoice Number")
-            df_g_clean = standardize_invoice_numbers(df_g_clean, "Invoice Number")
-
-            # ── Apply period filter if selected ──────────────────────────────
-            _sel_books_saved = st.session_state.get('period_sel_books', [])
-            _sel_gst_saved   = st.session_state.get('period_sel_gst',   [])
-            if _sel_books_saved:
-                _date_col_b = next((c for c in df_b_clean.columns if 'date' in c.lower()), None)
-                if _date_col_b:
-                    _dates_b = pd.to_datetime(df_b_clean[_date_col_b], dayfirst=True, errors='coerce')
-                    df_b_clean = df_b_clean[_dates_b.dt.strftime('%b').isin(_sel_books_saved)]
-            if _sel_gst_saved:
-                _date_col_g = next((c for c in df_g_clean.columns if 'date' in c.lower()), None)
-                if _date_col_g:
-                    _dates_g = pd.to_datetime(df_g_clean[_date_col_g], dayfirst=True, errors='coerce')
-                    df_g_clean = df_g_clean[_dates_g.dt.strftime('%b').isin(_sel_gst_saved)]
-
-            for req_field, mapped_val in final_books_map.items():
-                if mapped_val == "<No Column / Blank>":
-                    df_b_clean[req_field] = np.nan
-
-            df_b_clean = df_b_clean[[k for k in REQUIRED_FIELDS.keys() if k in df_b_clean.columns]]
-            df_g_clean = df_g_clean[[k for k in REQUIRED_FIELDS.keys() if k in df_g_clean.columns]]
-            df_b_clean = df_b_clean.loc[:, ~df_b_clean.columns.duplicated()]
-            df_g_clean = df_g_clean.loc[:, ~df_g_clean.columns.duplicated()]
+                # ── Apply period filter if selected ──────────────────────────────
+                _sel_books_saved = st.session_state.get('period_sel_books', [])
+                _sel_gst_saved   = st.session_state.get('period_sel_gst',   [])
+                if _sel_books_saved:
+                    _date_col_b = next((c for c in df_b_clean.columns if 'date' in c.lower()), None)
+                    if _date_col_b:
+                        _dates_b = pd.to_datetime(df_b_clean[_date_col_b], dayfirst=True, errors='coerce')
+                        df_b_clean = df_b_clean[_dates_b.dt.strftime('%b').isin(_sel_books_saved)]
+                if _sel_gst_saved:
+                    _date_col_g = next((c for c in df_g_clean.columns if 'date' in c.lower()), None)
+                    if _date_col_g:
+                        _dates_g = pd.to_datetime(df_g_clean[_date_col_g], dayfirst=True, errors='coerce')
+                        df_g_clean = df_g_clean[_dates_g.dt.strftime('%b').isin(_sel_gst_saved)]
+                st.session_state.pop("multi_period_inputs", None)
 
             st.session_state['df_b_clean']  = df_b_clean
             st.session_state['df_g_clean']  = df_g_clean
@@ -2201,7 +2384,56 @@ elif st.session_state.app_stage == 'processing':
     smart = st.session_state['smart_mode']
 
     time.sleep(0.5)
-    result, df_b_rem, df_g_rem = run_reconciliation(df_b, df_g, tol, st.session_state.manual_matches, smart)
+    multi_period_inputs = st.session_state.get("multi_period_inputs", [])
+    if multi_period_inputs:
+        result_parts = []
+        cdnr_parts = []
+        cdnr_summaries = []
+        for period_idx, period_data in enumerate(multi_period_inputs, start=1):
+            st.info(f"Running reconciliation for {period_data['label']}...")
+            period_result, _, _ = run_reconciliation(
+                period_data["df_b_clean"],
+                period_data["df_g_clean"],
+                tol,
+                [],
+                smart
+            )
+            period_result["Recon_Period"] = period_data["label"]
+            result_parts.append(period_result)
+
+            if period_data.get("books_bytes") is not None and period_data.get("gst_bytes") is not None:
+                try:
+                    _cdnr_result, _cdnr_summary = process_cdnr_reconciliation(
+                        io.BytesIO(period_data["books_bytes"]),
+                        io.BytesIO(period_data["gst_bytes"]),
+                        tolerance=tol,
+                        smart_mode=smart,
+                    )
+                    if _cdnr_result is not None and not _cdnr_result.empty:
+                        _cdnr_result = _cdnr_result.copy()
+                        _cdnr_result["Recon_Period"] = period_data["label"]
+                        cdnr_parts.append(_cdnr_result)
+                        cdnr_summaries.append(_cdnr_summary or {})
+                except Exception as _period_cdnr_err:
+                    st.warning(f"CDNR skipped for {period_data['label']}: {_period_cdnr_err}")
+
+        result = pd.concat(result_parts, ignore_index=True, sort=False) if result_parts else pd.DataFrame()
+        df_b = _concat_nonempty_frames([p["df_b_clean"] for p in multi_period_inputs])
+        df_g = _concat_nonempty_frames([p["df_g_clean"] for p in multi_period_inputs])
+        st.session_state["df_b_clean"] = df_b
+        st.session_state["df_g_clean"] = df_g
+
+        if cdnr_parts:
+            st.session_state.cdnr_result = pd.concat(cdnr_parts, ignore_index=True, sort=False)
+            st.session_state.cdnr_summary = {
+                key: sum(float(s.get(key, 0) or 0) for s in cdnr_summaries)
+                for key in set().union(*(s.keys() for s in cdnr_summaries))
+            }
+        else:
+            st.session_state.cdnr_result = None
+            st.session_state.cdnr_summary = None
+    else:
+        result, df_b_rem, df_g_rem = run_reconciliation(df_b, df_g, tol, st.session_state.manual_matches, smart)
     result['Final_Taxable'] = result['Taxable Value_BOOKS'].fillna(result['Taxable Value_GST']).fillna(0)
 
     # ── Old ITC Detection (post-processing, non-destructive) ─────────────────
@@ -2239,7 +2471,7 @@ elif st.session_state.app_stage == 'processing':
 
     # Run CDNR automatically from the same uploaded files. This is fail-soft:
     # B2B results continue even if the workbook has no CDNR sheet or CDNR parsing fails.
-    if st.session_state.get('file_books_bytes') is not None and st.session_state.get('file_gst_bytes') is not None:
+    if (not multi_period_inputs) and st.session_state.get('file_books_bytes') is not None and st.session_state.get('file_gst_bytes') is not None:
         try:
             st.session_state.pop('auto_cdnr_error', None)
             _cdnr_b_io = io.BytesIO(st.session_state['file_books_bytes'])
@@ -2346,8 +2578,7 @@ elif st.session_state.app_stage == 'results':
             _not_in_2b_df.get('CGST_BOOKS', pd.Series(dtype=float)).fillna(0).sum() +
             _not_in_2b_df.get('SGST_BOOKS', pd.Series(dtype=float)).fillna(0).sum()
         )
-        _cdnr_itc      = float(st.session_state.cdnr_summary.get('net_itc_impact', 0)) if st.session_state.cdnr_summary else 0.0
-        _net_eligible  = _books_total_gst - _itc_blocked + _cdnr_itc
+        _net_eligible  = _books_total_gst - _itc_blocked
         total_books_tax_amount = _books_total_gst
         total_gst_tax_amount = _gst_total_gst
 
@@ -2371,14 +2602,6 @@ elif st.session_state.app_stage == 'results':
             '<div class="itc-item-val itc-item-val-red">' + _fmt(_itc_blocked) + '</div>'
             '</div>'
         )
-        if st.session_state.cdnr_result is not None and st.session_state.cdnr_summary:
-            _banner_html += (
-                '<div class="itc-sep"></div>'
-                '<div class="itc-item">'
-                '<div class="itc-item-label">CDNR Adjustment</div>'
-                '<div class="itc-item-val">' + _fmt(_cdnr_itc) + '</div>'
-                '</div>'
-            )
         _banner_html += (
             '<div class="itc-sep"></div>'
             '<div class="itc-item">'
@@ -3170,7 +3393,11 @@ elif st.session_state.app_stage == 'results':
                     st.info("No changes detected.")
 
         result = st.session_state['last_result']
-        issue_vendors = get_vendors_with_issues(result)
+        _cdnr_notice_rows = _cdnr_rows_for_notices(st.session_state.get('cdnr_result'))
+        notice_result = pd.concat([result, _cdnr_notice_rows], ignore_index=True, sort=False) if not _cdnr_notice_rows.empty else result
+        issue_vendors = get_vendors_with_issues(notice_result)
+        if not _cdnr_notice_rows.empty:
+            st.info(f"CDNR issues included in notice generation: {len(_cdnr_notice_rows)} CDNR row(s) added to the notice pool.")
 
         # ════════════════════════════════════════════════════════════════════
         # ── SECTION 1: CATEGORY-EXCLUSIVE NOTICES (NEW) ──────────────────
@@ -3197,8 +3424,8 @@ elif st.session_state.app_stage == 'results':
         _cat_col1, _cat_col2 = st.columns(2, gap="medium")
 
         # Category counts
-        _not2b_vendors   = get_vendors_by_category(result, 'not_in_2b')
-        _notbooks_vendors = get_vendors_by_category(result, 'not_in_books')
+        _not2b_vendors   = get_vendors_by_category(notice_result, 'not_in_2b')
+        _notbooks_vendors = get_vendors_by_category(notice_result, 'not_in_books')
 
         with _cat_col1:
             st.markdown(f"""
@@ -3222,13 +3449,13 @@ elif st.session_state.app_stage == 'results':
                         # Preview single
                         _prev_2b = st.selectbox("Preview notice for:", _sel_2b, key="prev_2b_vendor")
                         if st.button("👁 Preview Notice", key="prev_2b_btn", use_container_width=True):
-                            _msg = generate_targeted_notice(result, _prev_2b, name, 'not_in_2b', _global_lang)
+                            _msg = generate_targeted_notice(notice_result, _prev_2b, name, 'not_in_2b', _global_lang)
                             st.session_state['preview_2b_msg'] = _msg
                     with _c2b_b:
                         # Bulk WA txt
                         _wa_2b_lines = []
                         for _v2b in _sel_2b:
-                            _m = generate_targeted_notice(result, _v2b, name, 'not_in_2b', _global_lang)
+                            _m = generate_targeted_notice(notice_result, _v2b, name, 'not_in_2b', _global_lang)
                             _wa_2b_lines.append(f"{'='*50}\nVENDOR: {_v2b}\n{'='*50}\n{_m}\n\n")
                         _wa_2b_bytes = "\n".join(_wa_2b_lines).encode('utf-8')
                         st.download_button("📱 Bulk WA — Not in 2B (.txt)", data=_wa_2b_bytes,
@@ -3245,7 +3472,7 @@ elif st.session_state.app_stage == 'results':
                         _z2b = io.BytesIO()
                         with zipfile.ZipFile(_z2b, "a", zipfile.ZIP_DEFLATED, False) as _zf:
                             for _v in _sel_2b:
-                                _pdf = create_vendor_pdf(result[result['Recon_Status'] == 'Invoices Not in GSTR-2B'], _v, name, gstin)
+                                _pdf = create_vendor_pdf(notice_result[notice_result['Recon_Status'] == 'Invoices Not in GSTR-2B'], _v, name, gstin)
                                 _zf.writestr(f"NotIn2B_Notice_{_v}.pdf", _pdf.getvalue())
                         st.download_button("⬇️ Download ZIP", data=_z2b.getvalue(),
                                            file_name=f"NotIn2B_Notices_{period}.zip",
@@ -3274,12 +3501,12 @@ elif st.session_state.app_stage == 'results':
                     with _cnb_a:
                         _prev_nb = st.selectbox("Preview notice for:", _sel_nb, key="prev_nb_vendor")
                         if st.button("👁 Preview Notice", key="prev_nb_btn", use_container_width=True):
-                            _msg_nb = generate_targeted_notice(result, _prev_nb, name, 'not_in_books', _global_lang)
+                            _msg_nb = generate_targeted_notice(notice_result, _prev_nb, name, 'not_in_books', _global_lang)
                             st.session_state['preview_nb_msg'] = _msg_nb
                     with _cnb_b:
                         _wa_nb_lines = []
                         for _vnb in _sel_nb:
-                            _m = generate_targeted_notice(result, _vnb, name, 'not_in_books', _global_lang)
+                            _m = generate_targeted_notice(notice_result, _vnb, name, 'not_in_books', _global_lang)
                             _wa_nb_lines.append(f"{'='*50}\nVENDOR: {_vnb}\n{'='*50}\n{_m}\n\n")
                         _wa_nb_bytes = "\n".join(_wa_nb_lines).encode('utf-8')
                         st.download_button("📱 Bulk WA — Not in Books (.txt)", data=_wa_nb_bytes,
@@ -3294,7 +3521,7 @@ elif st.session_state.app_stage == 'results':
                         _znb = io.BytesIO()
                         with zipfile.ZipFile(_znb, "a", zipfile.ZIP_DEFLATED, False) as _zf:
                             for _v in _sel_nb:
-                                _pdf = create_vendor_pdf(result[result['Recon_Status'] == 'Invoices Not in Purchase Books'], _v, name, gstin)
+                                _pdf = create_vendor_pdf(notice_result[notice_result['Recon_Status'] == 'Invoices Not in Purchase Books'], _v, name, gstin)
                                 _zf.writestr(f"NotInBooks_Notice_{_v}.pdf", _pdf.getvalue())
                         st.download_button("⬇️ Download ZIP", data=_znb.getvalue(),
                                            file_name=f"NotInBooks_Notices_{period}.zip",
@@ -3325,7 +3552,7 @@ elif st.session_state.app_stage == 'results':
                 bulk_status_filter = st.selectbox("Filter vendors by issue type:", list(STATUS_FILTER_OPTS.keys()), index=0, key="bulk_status_filter")
             selected_status_key = STATUS_FILTER_OPTS[bulk_status_filter]
             if selected_status_key:
-                filtered_vendors = [v for v in result[result['Recon_Status'].str.contains(
+                filtered_vendors = [v for v in notice_result[notice_result['Recon_Status'].str.contains(
                     selected_status_key.replace('(','\\(').replace(')','\\)'), na=False)]['Name of Party'].unique()
                     if v and str(v) != 'nan']
             else:
@@ -3341,7 +3568,7 @@ elif st.session_state.app_stage == 'results':
             )
 
             if selected_vendors_bulk:
-                sel_df = result[result['Name of Party'].isin(selected_vendors_bulk)]
+                sel_df = notice_result[notice_result['Name of Party'].isin(selected_vendors_bulk)]
                 st_counts = sel_df[sel_df['Recon_Status'].str.contains('Not in|Mismatch|Suggestion|Manual|Tax Error', na=False)]['Recon_Status'].value_counts()
                 if not st_counts.empty:
                     cols_st = st.columns(min(len(st_counts), 4))
@@ -3353,17 +3580,17 @@ elif st.session_state.app_stage == 'results':
                 zip_buffer_pdf = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer_pdf, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
                     for v in selected_vendors_bulk:
-                        pdf_data = create_vendor_pdf(result, v, name, gstin)
+                        pdf_data = create_vendor_pdf(notice_result, v, name, gstin)
                         zip_file.writestr(f"GST_Notice_{v}.pdf", pdf_data.getvalue())
-                filtered_df    = result[result['Name of Party'].isin(selected_vendors_bulk)]
+                filtered_df    = notice_result[notice_result['Name of Party'].isin(selected_vendors_bulk)]
                 zip_buffer_xls = generate_vendor_split_zip(filtered_df)
                 folder         = st.session_state.current_client_path
 
                 # Bulk WA .txt uses the global language
                 _wa_lines = []
                 for v in selected_vendors_bulk:
-                    _wmsg = generate_whatsapp_message(result, v, name) if _global_lang == 'en' \
-                            else generate_whatsapp_message_multilang(result, v, name, lang=_global_lang)
+                    _wmsg = generate_whatsapp_message(notice_result, v, name) if _global_lang == 'en' \
+                            else generate_whatsapp_message_multilang(notice_result, v, name, lang=_global_lang)
                     _wa_lines.append(f"{'='*50}\nVENDOR: {v}\n{'='*50}\n{_wmsg}\n\n")
                 _wa_txt_bytes = "\n".join(_wa_lines).encode('utf-8')
 
@@ -3396,8 +3623,8 @@ elif st.session_state.app_stage == 'results':
                 comm_mode = st.radio("Mode", ["📧 Email", "📱 WhatsApp", "📄 Preview PDF"], horizontal=True)
 
             if selected_vendor:
-                v_df = result[(result['Name of Party'] == selected_vendor) &
-                               result['Recon_Status'].str.contains('Not in|Mismatch|Suggestion|Manual|Tax Error', na=False)]
+                v_df = notice_result[(notice_result['Name of Party'] == selected_vendor) &
+                               notice_result['Recon_Status'].str.contains('Not in|Mismatch|Suggestion|Manual|Tax Error', na=False)]
                 v_counts = v_df['Recon_Status'].value_counts()
                 if not v_counts.empty:
                     st.caption("Issues: " + " | ".join(
@@ -3406,7 +3633,7 @@ elif st.session_state.app_stage == 'results':
                     ))
 
                 if comm_mode == "📧 Email":
-                    subject, body_txt = generate_email_draft(result, selected_vendor, name)
+                    subject, body_txt = generate_email_draft(notice_result, selected_vendor, name)
                     st.text_input("Subject", value=subject, key="email_subj")
                     st.code(body_txt, language='markdown')
 
@@ -3424,18 +3651,18 @@ elif st.session_state.app_stage == 'results':
                     _notice_type = st.radio("Notice content:", _notice_type_opts, horizontal=True, key="single_notice_type")
 
                     if _notice_type == "🔴 Not in GSTR-2B Only":
-                        wa_body = generate_targeted_notice(result, selected_vendor, name, 'not_in_2b', _global_lang)
+                        wa_body = generate_targeted_notice(notice_result, selected_vendor, name, 'not_in_2b', _global_lang)
                     elif _notice_type == "🟠 Not in Books Only":
-                        wa_body = generate_targeted_notice(result, selected_vendor, name, 'not_in_books', _global_lang)
+                        wa_body = generate_targeted_notice(notice_result, selected_vendor, name, 'not_in_books', _global_lang)
                     elif _global_lang == 'en':
-                        wa_body = generate_whatsapp_message(result, selected_vendor, name)
+                        wa_body = generate_whatsapp_message(notice_result, selected_vendor, name)
                     else:
-                        wa_body = generate_whatsapp_message_multilang(result, selected_vendor, name, lang=_global_lang)
+                        wa_body = generate_whatsapp_message_multilang(notice_result, selected_vendor, name, lang=_global_lang)
 
                     st.code(wa_body, language='markdown')
 
                     if st.session_state.current_recon_id and st.button("✅ Mark Notice Sent to this Vendor", key="mark_sent_single"):
-                        _v_gstin = str(result[result['Name of Party'] == selected_vendor]['GSTIN'].iloc[0]) if 'GSTIN' in result.columns else ''
+                        _v_gstin = str(notice_result[notice_result['Name of Party'] == selected_vendor]['GSTIN'].iloc[0]) if 'GSTIN' in notice_result.columns else ''
                         _v_issues = len(v_df)
                         _v_itc    = float(v_df['Final_Taxable'].sum()) if 'Final_Taxable' in v_df.columns else 0.0
                         upsert_followup(st.session_state.current_recon_id, selected_vendor, _v_gstin, _v_issues, _v_itc)
@@ -3455,7 +3682,7 @@ elif st.session_state.app_stage == 'results':
                         """, unsafe_allow_html=True)
 
                 elif comm_mode == "📄 Preview PDF":
-                    pdf_data = create_vendor_pdf(result, selected_vendor, name, gstin)
+                    pdf_data = create_vendor_pdf(notice_result, selected_vendor, name, gstin)
                     st.download_button(f"⬇️ Download Notice PDF — {selected_vendor}", data=pdf_data.getvalue(),
                                        file_name=f"GST_Notice_{selected_vendor}.pdf", mime="application/pdf",
                                        type="primary", use_container_width=True, key="single_pdf_dl")

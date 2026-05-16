@@ -513,11 +513,7 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
         df_sub=df_sub.copy()
         if 'Invoice Date_BOOKS' in df_sub.columns: df_sub['Invoice Date_BOOKS']=safe_date_format(df_sub['Invoice Date_BOOKS'])
         if 'Invoice Date_GST'   in df_sub.columns: df_sub['Invoice Date_GST']  =safe_date_format(df_sub['Invoice Date_GST'])
-        df_sub['Diff_Taxable']=(
-            df_sub['IGST_BOOKS'].fillna(0)+df_sub['CGST_BOOKS'].fillna(0)+df_sub['SGST_BOOKS'].fillna(0)
-        ) - (
-            df_sub['IGST_GST'].fillna(0)+df_sub['CGST_GST'].fillna(0)+df_sub['SGST_GST'].fillna(0)
-        )
+        df_sub['Diff_Taxable']=df_sub['Taxable Value_BOOKS'].fillna(0)-df_sub['Taxable Value_GST'].fillna(0)
         df_sub['Diff_IGST']=df_sub['IGST_BOOKS'].fillna(0)-df_sub['IGST_GST'].fillna(0)
         df_sub['Diff_CGST']=df_sub['CGST_BOOKS'].fillna(0)-df_sub['CGST_GST'].fillna(0)
         df_sub['Diff_SGST']=df_sub['SGST_BOOKS'].fillna(0)-df_sub['SGST_GST'].fillna(0)
