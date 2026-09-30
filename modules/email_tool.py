@@ -597,7 +597,7 @@ def generate_whatsapp_message_multilang(df, vendor_name, company_name, lang='hi'
     total_inv   = sum(len(v) for v in groups.values())
     total_tax_b = sum(float(r.get('Taxable Value_BOOKS', 0) or 0)
                       for rows in groups.values() for r in rows)
-    today = pd.Timestamp.now().strftime('%d %b %Y')
+    today = pd.Timestamp.now().strftime('%d/%m/%Y')
 
     STATUS_ICONS = {
         'Invoices Not in GSTR-2B':        '🔴',
