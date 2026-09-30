@@ -5,3 +5,4 @@ altair
 reportlab[shaping]>=4.4.0
 xlsxwriter
 openpyxl
+weasyprint>=62,<71
