@@ -241,7 +241,8 @@ MODULES = [
         "icon": "description",
         "name": "Sales Register vs GSTR-1",
         "desc": "Cross-check your internal Sales Register with GSTR-1 filed data to catch unreported or mismatched sales.",
-        "tags": ["Sales", "GSTR-1", "B2C"],
+        "tags": ["Sales", "GSTR-1", "B2B", "CDNR"],
+        "preview": True,
         "active": False,
     },
     {
@@ -314,7 +315,7 @@ def render_dashboard():
     </div>
     <div class="module-heading">
         <div class="module-title"><span class="material-symbols-outlined" style="color:#0058be">folder_open</span>Available Modules</div>
-        <div class="module-live-badge">1 Module Live • 4 Coming Soon</div>
+        <div class="module-live-badge">1 Live • Module 04 Preview • 3 Coming Soon</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -323,8 +324,8 @@ def render_dashboard():
 
     for i, (col, mod) in enumerate(zip(card_cols, MODULES)):
         with col:
-            state = "Current Module" if mod["active"] else "Coming Soon"
-            card_class = "module-card active" if mod["active"] else "module-card"
+            state = "Current Module" if mod["active"] else "Preview" if mod.get("preview") else "Coming Soon"
+            card_class = "module-card active" if mod["active"] or mod.get("preview") else "module-card"
             st.markdown(f"""
             <div class="{card_class}">
                 <div class="module-state">{state}</div>
@@ -335,10 +336,10 @@ def render_dashboard():
                 <div class="module-tags">{''.join(f'<span class="module-tag">{tag}</span>' for tag in mod['tags'])}</div>
             </div>
             """, unsafe_allow_html=True)
-            if mod["active"]:
+            if mod["active"] or mod.get("preview"):
                 st.markdown('<div class="module-open-btn">', unsafe_allow_html=True)
                 if st.button("🚀 Open Workspace", key=f"mod_btn_{i}", use_container_width=True):
-                    clicked_module = "MODULE 02"
+                    clicked_module = mod["num"].upper()
                 st.markdown("</div>", unsafe_allow_html=True)
             else:
                 st.markdown('<div class="module-soon-btn">', unsafe_allow_html=True)
