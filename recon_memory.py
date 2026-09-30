@@ -156,7 +156,7 @@ def result_to_run_lines(result, financial_year: str) -> list[dict[str, Any]]:
             if _is_missing(gstin) or _is_missing(invoice):
                 continue
             doc = next((row.get(k + suffix) for k in ("Document Type", "Invoice Type", "Doc Type")
-                        if row.get(k + suffix) is not None), "")
+                        if row.get(k + suffix) is not None and not _is_missing(row.get(k + suffix))), "")
             def value(name):
                 v = row.get(name + suffix)
                 return None if _is_missing(v) else v
