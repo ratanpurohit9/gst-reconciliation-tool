@@ -3732,7 +3732,11 @@ elif st.session_state.app_stage == 'results':
         """, unsafe_allow_html=True)
         _lang_sel = st.radio("Language", ["🇬🇧 English", "🇮🇳 Hindi", "🇮🇳 Gujarati"],
                              horizontal=True, key="global_lang_radio")
-        _global_lang = 'en' if 'English' in _lang_sel else ('hi' if 'Hindi' in _lang_sel else 'gu')
+        _global_lang = {
+            "🇬🇧 English": "en",
+            "🇮🇳 Hindi": "hi",
+            "🇮🇳 Gujarati": "gu",
+        }.get(_lang_sel, "en")
         st.session_state['wa_lang'] = _global_lang
 
         # ── TWO EXCLUSIVE CATEGORY PANELS ────────────────────────────────────
