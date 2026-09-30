@@ -4,11 +4,16 @@ from pathlib import Path
 
 from recon_memory import (
     assign_row_ids, create_memory, make_row_id, normalize_invoice_number,
-    open_uploaded_memory, export_memory, save_run, validate_memory,
+    open_uploaded_memory, export_memory, memory_filename, save_run, validate_memory,
 )
 
 
 class MemoryTests(unittest.TestCase):
+    def test_download_name_is_safe_and_includes_client_fy_and_date(self):
+        from datetime import date
+        self.assertEqual(memory_filename("Acme & Co", "2025 - 2026", date(2025, 5, 1)),
+                         "Acme_Co_FY2025-26_memory_2025-05-01.db")
+
     def test_row_id_is_stable_and_normalizes_invoice_punctuation(self):
         a = make_row_id("27AAAAA0000A1Z5", "INV/0458", "B", "INV", "2025-26")
         b = make_row_id("27aaaaa0000a1z5", "inv-0458", "B", "INV", "2025-26")

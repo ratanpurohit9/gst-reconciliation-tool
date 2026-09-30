@@ -123,6 +123,11 @@ from modules.db_handler     import (init_db, save_reconciliation, get_history_li
                                     get_all_clients_itc_summary, compare_two_recons)
 from modules.file_manager   import get_client_path, save_file_to_folder, open_folder
 
+import tempfile
+import sqlite3
+from recon_memory import (create_memory, validate_memory, open_uploaded_memory,
+                          export_memory, memory_filename)
+
 # --- PRE-PROCESSORS ---
 from modules.pre_processor  import smart_read_b2ba, process_amendments
 
@@ -142,8 +147,104 @@ st.set_page_config(
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
+
 )
 init_db()
+
+# ── User-held reconciliation memory (per-session temporary copy) ─────────
+def _clear_memory_dirty():
+    st.session_state["memory_dirty"] = False
+
+st.sidebar.markdown("### Memory")
+_memory_client = st.sidebar.text_input(
+    "Memory client", value=st.session_state.get("meta_name", ""), key="memory_client"
+).strip()
+_memory_fy = st.sidebar.text_input(
+    "Memory financial year", value=st.session_state.get("meta_fy", ""), key="memory_fy"
+).strip()
+_memory_upload = st.sidebar.file_uploader(
+    "Upload memory file", type=["db"], key="memory_file_upload"
+)
+_memory_identity = (_memory_client.casefold(), _memory_fy.casefold())
+_memory_path = st.session_state.get("memory_path")
+_memory_active_identity = st.session_state.get("memory_identity")
+_memory_upload_error = None
+
+if _memory_upload is not None and _memory_client and _memory_fy:
+    _memory_bytes = _memory_upload.getvalue()
+    _memory_hash = hashlib.sha256(_memory_bytes).hexdigest()
+    if _memory_hash != st.session_state.get("memory_upload_hash"):
+        try:
+            _new_memory_path = open_uploaded_memory(_memory_bytes, _memory_client, _memory_fy)
+            st.session_state["memory_path"] = _new_memory_path
+            st.session_state["memory_identity"] = _memory_identity
+            st.session_state["memory_upload_hash"] = _memory_hash
+            st.session_state["memory_dirty"] = False
+            st.session_state.pop("memory_error", None)
+            _memory_path = _new_memory_path
+            _memory_active_identity = _memory_identity
+        except (ValueError, sqlite3.Error, OSError) as _memory_err:
+            st.session_state["memory_upload_hash"] = _memory_hash
+            st.session_state["memory_error"] = str(_memory_err)
+            _memory_upload_error = str(_memory_err)
+
+_memory_upload_error = _memory_upload_error or st.session_state.get("memory_error")
+_memory_mismatch = bool(_memory_path and _memory_active_identity != _memory_identity)
+if _memory_client and _memory_fy and not _memory_path and not _memory_upload_error:
+    _memory_handle = tempfile.NamedTemporaryFile(prefix="gst-memory-session-", suffix=".db", delete=False)
+    _memory_handle.close()
+    create_memory(_memory_handle.name, _memory_client, _memory_fy)
+    st.session_state["memory_path"] = _memory_handle.name
+    st.session_state["memory_identity"] = _memory_identity
+    st.session_state["memory_dirty"] = False
+    _memory_path = _memory_handle.name
+    _memory_active_identity = _memory_identity
+    _memory_mismatch = False
+
+if _memory_upload_error or _memory_mismatch:
+    if _memory_upload_error:
+        st.sidebar.error(f"Memory file not loaded: {_memory_upload_error}")
+    else:
+        st.sidebar.warning("This memory belongs to a different client or financial year.")
+    _start_fresh = st.sidebar.checkbox(
+        "Start a fresh memory for this client and FY", key="memory_start_fresh"
+    )
+    if _start_fresh and _memory_client and _memory_fy and st.session_state.get("memory_fresh_identity") != _memory_identity:
+        _memory_handle = tempfile.NamedTemporaryFile(prefix="gst-memory-session-", suffix=".db", delete=False)
+        _memory_handle.close()
+        create_memory(_memory_handle.name, _memory_client, _memory_fy)
+        st.session_state["memory_path"] = _memory_handle.name
+        st.session_state["memory_identity"] = _memory_identity
+        st.session_state["memory_fresh_identity"] = _memory_identity
+        st.session_state["memory_dirty"] = False
+        st.session_state.pop("memory_error", None)
+        _memory_path = _memory_handle.name
+        _memory_active_identity = _memory_identity
+        _memory_upload_error = None
+        _memory_mismatch = False
+
+_memory_ready = bool(
+    _memory_path and _memory_active_identity == _memory_identity and
+    _memory_client and _memory_fy and not _memory_upload_error
+)
+st.session_state["memory_ready"] = _memory_ready
+if _memory_ready:
+    try:
+        _memory_meta = validate_memory(_memory_path, _memory_client, _memory_fy)
+        st.sidebar.caption(f"Last updated: {_memory_meta.get('last_updated', 'unknown')}")
+        st.sidebar.download_button(
+            "Download updated memory", data=export_memory(_memory_path),
+            file_name=memory_filename(_memory_client, _memory_fy),
+            mime="application/octet-stream", on_click=_clear_memory_dirty,
+            type="primary", use_container_width=True,
+        )
+        if st.session_state.get("memory_dirty", False):
+            st.sidebar.error("Unsaved changes — download memory")
+    except (ValueError, sqlite3.Error, OSError) as _memory_err:
+        st.sidebar.error(f"Memory unavailable: {_memory_err}")
+        st.session_state["memory_ready"] = False
+elif not (_memory_upload_error or _memory_mismatch):
+    st.sidebar.caption("Choose a client and financial year to create or open memory.")
 
 st.markdown("""
     <style>

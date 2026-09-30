@@ -133,6 +133,14 @@ def export_memory(path: str | Path) -> bytes:
         return f.read()
 
 
+def memory_filename(client: str, financial_year: str, on_date: date | None = None) -> str:
+    """Build the portable download name requested by the memory-file workflow."""
+    safe_client = re.sub(r"[^A-Za-z0-9._-]+", "_", str(client).strip()).strip("._-") or "Client"
+    years = re.findall(r"\d{4}", str(financial_year))
+    fy = f"{years[0]}-{years[-1][-2:]}" if len(years) >= 2 else re.sub(r"\s+", "", str(financial_year))
+    return f"{safe_client}_FY{fy}_memory_{(on_date or date.today()).isoformat()}.db"
+
+
 def save_run(path: str | Path, run_id: str, month: str, return_type: str,
              rows: Iterable[Mapping[str, Any]], run_date: str | None = None) -> None:
     """Replace one month/return snapshot; preserve first-seen dates across reruns."""
