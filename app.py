@@ -127,7 +127,7 @@ import tempfile
 import sqlite3
 import uuid
 from recon_memory import (create_memory, validate_memory, open_uploaded_memory,
-                          export_memory, memory_filename, result_to_run_lines, save_run, export_exceptions)
+                          export_memory, memory_filename, result_to_run_lines, save_run, export_exceptions, import_decisions)
 
 # --- PRE-PROCESSORS ---
 from modules.pre_processor  import smart_read_b2ba, process_amendments
@@ -250,6 +250,31 @@ if _memory_ready:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
+        _decision_upload = st.sidebar.file_uploader(
+            "Upload decisions", type=["xlsx"], key="memory_decision_upload"
+        )
+        if _decision_upload is not None:
+            _decision_bytes = _decision_upload.getvalue()
+            _decision_hash = hashlib.sha256(_decision_bytes).hexdigest()
+            if _decision_hash != st.session_state.get("memory_decision_upload_hash"):
+                try:
+                    _decision_result = import_decisions(_memory_path, _decision_bytes)
+                    st.session_state["memory_decision_upload_hash"] = _decision_hash
+                    st.session_state["memory_decision_import_result"] = _decision_result
+                    if _decision_result["saved"]:
+                        st.session_state["memory_dirty"] = True
+                except (ValueError, OSError, sqlite3.Error) as _decision_err:
+                    st.sidebar.error(f"Could not import decisions: {_decision_err}")
+        _decision_result = st.session_state.get("memory_decision_import_result")
+        if _decision_result:
+            st.sidebar.success(
+                f"{_decision_result['saved']} saved, {len(_decision_result['unrecognized'])} not recognised"
+            )
+            if _decision_result["unrecognized"]:
+                st.sidebar.dataframe(
+                    pd.DataFrame(_decision_result["unrecognized"]),
+                    use_container_width=True, hide_index=True
+                )
         if st.session_state.get("memory_dirty", False):
             st.sidebar.error("Unsaved changes — download memory")
     except (ValueError, sqlite3.Error, OSError) as _memory_err:

@@ -6,7 +6,7 @@ from io import BytesIO
 from recon_memory import (
     assign_row_ids, create_memory, make_row_id, normalize_invoice_number,
     open_uploaded_memory, export_memory, export_exceptions, memory_filename, result_to_run_lines,
-    save_run, validate_memory,
+    import_decisions, apply_decisions, save_run, validate_memory,
 )
 
 
@@ -43,6 +43,33 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual(ws.cell(1, 1).value, "Row ID")
             self.assertEqual(ws.cell(2, 1).value, "abc123")
             self.assertEqual(len(ws.data_validations.dataValidation), 1)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_import_link_applies_both_sides_and_flags_changed_amount(self):
+        from openpyxl import Workbook
+        path = Path(__file__).parents[1] / "_test-decisions.db"
+        try:
+            create_memory(path, "Client A", "2025-26")
+            book_id = make_row_id("G1", "BOOKS-1", "B", "", "2025-26")
+            gst_id = make_row_id("G1", "PORTAL-1", "G", "", "2025-26")
+            lines = [
+                {"row_id": book_id, "side": "B", "gstin": "G1", "inv_no": "BOOKS-1", "taxable": 100, "engine_status": "Invoices Not in GSTR-2B"},
+                {"row_id": gst_id, "side": "G", "gstin": "G1", "inv_no": "PORTAL-1", "taxable": 100, "engine_status": "Invoices Not in Purchase Books"},
+            ]
+            save_run(path, "run-1", "April", "GSTR2B", lines, "2025-05-01")
+            wb = Workbook(); ws = wb.active
+            ws.append(["Row ID", "Decision", "Linked To", "Reason"])
+            ws.append([book_id, "Link", "PORTAL-1", "Same invoice, typo in books"])
+            stream = BytesIO(); wb.save(stream)
+            result = import_decisions(path, stream.getvalue())
+            self.assertEqual((result["saved"], len(result["unrecognized"])), (1, 0))
+            self.assertEqual(apply_decisions(path, "run-1"), {
+                book_id: "Matched (manual)", gst_id: "Matched (manual)"})
+            lines[0]["taxable"] = 110
+            save_run(path, "run-2", "April", "GSTR2B", lines, "2025-05-02")
+            self.assertEqual(apply_decisions(path, "run-2")[book_id], "Needs review")
+            self.assertEqual(apply_decisions(path, "run-2")[gst_id], "Needs review")
         finally:
             path.unlink(missing_ok=True)
 

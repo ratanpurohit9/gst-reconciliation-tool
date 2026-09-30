@@ -257,6 +257,119 @@ def export_exceptions(path: str | Path) -> bytes:
     return output.getvalue()
 
 
+def import_decisions(path: str | Path, workbook_bytes: bytes) -> dict[str, Any]:
+    """Import edited exception rows; report missing, damaged, or ambiguous IDs."""
+    import pandas as pd
+    try:
+        frame = pd.read_excel(io.BytesIO(workbook_bytes), dtype=object)
+    except Exception as exc:
+        raise ValueError(f"Could not read decisions workbook: {exc}") from exc
+    normalized = {re.sub(r"[^a-z0-9]", "", str(col).casefold()): col for col in frame.columns}
+    id_col = normalized.get("rowid")
+    decision_col = normalized.get("decision")
+    if decision_col is None:
+        raise ValueError("Workbook must include a Decision column")
+
+    def cell(row, col):
+        if col is None:
+            return ""
+        value = row.get(col, "")
+        return "" if _is_missing(value) else str(value).strip()
+
+    with _connect(path) as db:
+        current_rows = db.execute("""SELECT l.row_id,l.side,l.gstin,l.inv_no,l.taxable
+            FROM run_lines l JOIN runs r USING(run_id)
+            ORDER BY r.run_date DESC""").fetchall()
+        known: dict[str, dict[str, Any]] = {}
+        for row in current_rows:
+            known.setdefault(row["row_id"], dict(row))
+        saved, unrecognized = 0, []
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        for idx, row in frame.iterrows():
+            decision = cell(row, decision_col).strip().title()
+            if not decision:
+                continue
+            row_id = cell(row, id_col)
+            reason = cell(row, normalized.get("reason"))
+            if not row_id or row_id not in known:
+                unrecognized.append({"row": int(idx) + 2, "row_id": row_id, "reason": "Row ID missing or not found"})
+                continue
+            if decision not in {"Link", "Accept", "Action"}:
+                unrecognized.append({"row": int(idx) + 2, "row_id": row_id, "reason": f"Unknown decision: {decision}"})
+                continue
+            linked_id = None
+            if decision == "Link":
+                link_value = cell(row, normalized.get("linkedto"))
+                if link_value in known:
+                    linked_id = link_value
+                else:
+                    source = known[row_id]
+                    candidates = [rid for rid, target in known.items()
+                        if target["side"] != source["side"]
+                        and str(target.get("gstin") or "").casefold() == str(source.get("gstin") or "").casefold()
+                        and normalize_invoice_number(target.get("inv_no")) == normalize_invoice_number(link_value)]
+                    if len(candidates) == 1:
+                        linked_id = candidates[0]
+                if not linked_id or linked_id == row_id or known[linked_id]["side"] == known[row_id]["side"]:
+                    unrecognized.append({"row": int(idx) + 2, "row_id": row_id,
+                                         "reason": "Linked To did not identify one opposite-side invoice"})
+                    continue
+            targets = [(row_id, decision, linked_id, known[row_id])]
+            if decision == "Link":
+                targets.append((linked_id, decision, row_id, known[linked_id]))
+            for target_id, target_decision, target_link, target in targets:
+                db.execute("""INSERT INTO decisions(row_id,decision,linked_row_id,amount_then,reason,decided_on)
+                    VALUES(?,?,?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET
+                    decision=excluded.decision,linked_row_id=excluded.linked_row_id,
+                    amount_then=excluded.amount_then,reason=excluded.reason,decided_on=excluded.decided_on""",
+                    (target_id, target_decision, target_link, target.get("taxable"), reason, now))
+            saved += 1
+        db.execute("UPDATE meta SET value=? WHERE key='last_updated'", (now,))
+    return {"saved": saved, "unrecognized": unrecognized}
+
+
+def apply_decisions(path: str | Path, run_id: str) -> dict[str, str]:
+    """Set final_status for one run without changing the engine's original verdict."""
+    with _connect(path) as db:
+        current = {r["row_id"]: dict(r) for r in db.execute(
+            "SELECT row_id,taxable,engine_status FROM run_lines WHERE run_id=?", (run_id,))}
+        decisions = {r["row_id"]: dict(r) for r in db.execute("SELECT * FROM decisions")}
+        final = {rid: row["engine_status"] for rid, row in current.items()}
+
+        def amount_changed(rid: str, decision: dict[str, Any]) -> bool:
+            now_amount, old_amount = current[rid].get("taxable"), decision.get("amount_then")
+            try:
+                return abs(float(now_amount) - float(old_amount)) > 0.01
+            except (TypeError, ValueError):
+                return now_amount != old_amount
+
+        processed: set[str] = set()
+        for row_id, decision in decisions.items():
+            if row_id not in current or row_id in processed:
+                continue
+            kind = decision.get("decision")
+            if amount_changed(row_id, decision):
+                final[row_id] = "Needs review"
+            elif kind == "Accept":
+                final[row_id] = "Accepted difference"
+            elif kind == "Action":
+                final[row_id] = "Needs review"
+            elif kind == "Link":
+                target_id = decision.get("linked_row_id")
+                paired = decisions.get(target_id, {})
+                if (target_id in current and not amount_changed(target_id, paired)
+                        and paired.get("decision") == "Link"
+                        and paired.get("linked_row_id") == row_id):
+                    final[row_id] = final[target_id] = "Matched (manual)"
+                    processed.add(target_id)
+                else:
+                    final[row_id] = "Needs review"
+            processed.add(row_id)
+        for rid, status in final.items():
+            db.execute("UPDATE run_lines SET final_status=? WHERE run_id=? AND row_id=?", (status, run_id, rid))
+    return final
+
+
 def touch_updated(path: str | Path) -> None:
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with _connect(path) as db:
