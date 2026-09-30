@@ -6,6 +6,7 @@ keep only a per-session temporary copy and must never use a shared server path.
 from __future__ import annotations
 
 import hashlib
+import math
 import io
 import re
 import sqlite3
@@ -139,6 +140,52 @@ def memory_filename(client: str, financial_year: str, on_date: date | None = Non
     years = re.findall(r"\d{4}", str(financial_year))
     fy = f"{years[0]}-{years[-1][-2:]}" if len(years) >= 2 else re.sub(r"\s+", "", str(financial_year))
     return f"{safe_client}_FY{fy}_memory_{(on_date or date.today()).isoformat()}.db"
+
+
+def result_to_run_lines(result, financial_year: str) -> list[dict[str, Any]]:
+    """Convert engine output into compact, one-row-per-side invoice snapshots."""
+    lines: list[dict[str, Any]] = []
+    for _, row in result.iterrows():
+        engine_status = row.get("Recon_Status", "")
+        match_method = row.get("Match_Logic", "")
+        for side, suffix in (("B", "_BOOKS"), ("G", "_GST")):
+            gstin = row.get("GSTIN" + suffix)
+            invoice = row.get("Invoice Number" + suffix)
+            if gstin is None or invoice is None:
+                continue
+            if _is_missing(gstin) or _is_missing(invoice):
+                continue
+            doc = next((row.get(k + suffix) for k in ("Document Type", "Invoice Type", "Doc Type")
+                        if row.get(k + suffix) is not None), "")
+            def value(name):
+                v = row.get(name + suffix)
+                return None if _is_missing(v) else v
+            inv_date = value("Invoice Date")
+            if hasattr(inv_date, "isoformat"):
+                inv_date = inv_date.isoformat()
+            taxable = value("Taxable Value")
+            lines.append({
+                "row_id": make_row_id(gstin, invoice, side, doc, financial_year),
+                "side": side, "gstin": str(gstin), "inv_no": str(invoice),
+                "inv_date": str(inv_date) if inv_date is not None else None,
+                "taxable": taxable, "igst": value("IGST"), "cgst": value("CGST"),
+                "sgst": value("SGST"), "cess": value("Cess"),
+                "engine_status": str(engine_status), "final_status": str(engine_status),
+                "match_method": str(match_method), "amount_then": taxable,
+            })
+    return lines
+
+
+def _is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        return bool(math.isnan(value))
+    except (TypeError, ValueError):
+        try:
+            return bool(value != value)
+        except (TypeError, ValueError):
+            return str(value) in {"<NA>", "NaT"}
 
 
 def save_run(path: str | Path, run_id: str, month: str, return_type: str,

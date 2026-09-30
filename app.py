@@ -125,8 +125,9 @@ from modules.file_manager   import get_client_path, save_file_to_folder, open_fo
 
 import tempfile
 import sqlite3
+import uuid
 from recon_memory import (create_memory, validate_memory, open_uploaded_memory,
-                          export_memory, memory_filename)
+                          export_memory, memory_filename, result_to_run_lines, save_run)
 
 # --- PRE-PROCESSORS ---
 from modules.pre_processor  import smart_read_b2ba, process_amendments
@@ -154,6 +155,11 @@ init_db()
 # ── User-held reconciliation memory (per-session temporary copy) ─────────
 def _clear_memory_dirty():
     st.session_state["memory_dirty"] = False
+
+if not st.session_state.get("memory_client") and st.session_state.get("meta_name"):
+    st.session_state["memory_client"] = st.session_state["meta_name"]
+if not st.session_state.get("memory_fy") and st.session_state.get("meta_fy"):
+    st.session_state["memory_fy"] = st.session_state["meta_fy"]
 
 st.sidebar.markdown("### Memory")
 _memory_client = st.sidebar.text_input(
@@ -2475,6 +2481,11 @@ if st.session_state.app_stage == 'setup':
 # STAGE 2 — PROCESSING
 # ==========================================
 elif st.session_state.app_stage == 'processing':
+    _expected_memory_identity = (str(st.session_state.get('meta_name', '')).casefold(), str(st.session_state.get('meta_fy', '')).casefold())
+    if not st.session_state.get('memory_ready') or st.session_state.get('memory_identity') != _expected_memory_identity:
+        st.error('Select a matching client and financial year in the sidebar Memory section before running reconciliation.')
+        st.session_state.app_stage = 'setup'
+        st.stop()
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align:center;color:#444;'>🤖 The Reconciliation Engine is processing your data...</h3>", unsafe_allow_html=True)
     show_processing_animation()
@@ -2568,6 +2579,22 @@ elif st.session_state.app_stage == 'processing':
     st.session_state.current_recon_id   = recon_id
     st.session_state.current_client_path = get_client_path(meta['name'], meta['gstin'], meta['fy'], meta['period'])
     st.session_state['last_result'] = result
+
+    # Keep compact invoice-level run history in the user's memory file.
+    if st.session_state.get("memory_ready"):
+        _memory_lines = result_to_run_lines(result, meta['fy'])
+        if 'Recon_Period' in result.columns:
+            for _memory_period, _memory_frame in result.groupby('Recon_Period', dropna=False):
+                save_run(
+                    st.session_state['memory_path'], uuid.uuid4().hex, str(_memory_period),
+                    "GSTR2B", result_to_run_lines(_memory_frame, meta['fy'])
+                )
+        else:
+            save_run(
+                st.session_state['memory_path'], uuid.uuid4().hex, str(meta['period']),
+                "GSTR2B", _memory_lines
+            )
+        st.session_state['memory_dirty'] = True
     log_action(recon_id, 'new_recon', {'invoices': len(result), 'tolerance': tol})
 
     # Run CDNR automatically from the same uploaded files. This is fail-soft:

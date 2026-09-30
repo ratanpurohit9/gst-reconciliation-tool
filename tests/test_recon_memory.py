@@ -4,7 +4,8 @@ from pathlib import Path
 
 from recon_memory import (
     assign_row_ids, create_memory, make_row_id, normalize_invoice_number,
-    open_uploaded_memory, export_memory, memory_filename, save_run, validate_memory,
+    open_uploaded_memory, export_memory, memory_filename, result_to_run_lines,
+    save_run, validate_memory,
 )
 
 
@@ -13,6 +14,19 @@ class MemoryTests(unittest.TestCase):
         from datetime import date
         self.assertEqual(memory_filename("Acme & Co", "2025 - 2026", date(2025, 5, 1)),
                          "Acme_Co_FY2025-26_memory_2025-05-01.db")
+
+    def test_result_snapshot_creates_one_stable_line_per_side(self):
+        import pandas as pd
+        result = pd.DataFrame([{
+            "GSTIN_BOOKS": "G1", "Invoice Number_BOOKS": "INV/0458",
+            "Invoice Date_BOOKS": "2025-04-30", "Taxable Value_BOOKS": 100,
+            "GSTIN_GST": "G1", "Invoice Number_GST": "INV-0458",
+            "Invoice Date_GST": "2025-04-30", "Taxable Value_GST": 100,
+            "Recon_Status": "Matched", "Match_Logic": "Exact",
+        }])
+        lines = result_to_run_lines(result, "2025-26")
+        self.assertEqual([line["side"] for line in lines], ["B", "G"])
+        self.assertNotEqual(lines[0]["row_id"], lines[1]["row_id"])
 
     def test_row_id_is_stable_and_normalizes_invoice_punctuation(self):
         a = make_row_id("27AAAAA0000A1Z5", "INV/0458", "B", "INV", "2025-26")
