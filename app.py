@@ -2659,24 +2659,6 @@ elif st.session_state.app_stage == 'processing':
         st.session_state['memory_final_statuses'] = _memory_statuses
         st.session_state['memory_run_ids'] = _memory_run_ids
         st.session_state['memory_dirty'] = True
-    # Keep the CDNR rows in the same portable memory so report re-uploads can
-    # resolve their hidden row IDs and apply decisions to notices and summaries.
-    _memory_cdnr_result = st.session_state.get("cdnr_result")
-    if st.session_state.get("memory_ready") and _memory_cdnr_result is not None and not _memory_cdnr_result.empty:
-        _cdnr_groups = (_memory_cdnr_result.groupby("Recon_Period", dropna=False)
-                        if "Recon_Period" in _memory_cdnr_result.columns
-                        else [(meta["period"], _memory_cdnr_result)])
-        for _cdnr_period, _cdnr_frame in _cdnr_groups:
-            _cdnr_run_id = uuid.uuid4().hex
-            save_run(
-                st.session_state["memory_path"], _cdnr_run_id, str(_cdnr_period), "CDNR",
-                cdnr_result_to_run_lines(_cdnr_frame, meta["fy"])
-            )
-            _memory_statuses.update(apply_decisions(st.session_state["memory_path"], _cdnr_run_id))
-            _memory_run_ids.append(_cdnr_run_id)
-        st.session_state["memory_final_statuses"] = _memory_statuses
-        st.session_state["memory_run_ids"] = _memory_run_ids
-        st.session_state["memory_dirty"] = True
     log_action(recon_id, 'new_recon', {'invoices': len(result), 'tolerance': tol})
 
     # Run CDNR automatically from the same uploaded files. This is fail-soft:
@@ -2704,6 +2686,24 @@ elif st.session_state.app_stage == 'processing':
             st.session_state.cdnr_summary = None
             st.session_state['auto_cdnr_error'] = str(_auto_cdnr_err)
 
+    # Keep the CDNR rows in the same portable memory so report re-uploads can
+    # resolve their hidden row IDs and apply decisions to notices and summaries.
+    _memory_cdnr_result = st.session_state.get("cdnr_result")
+    if st.session_state.get("memory_ready") and _memory_cdnr_result is not None and not _memory_cdnr_result.empty:
+        _cdnr_groups = (_memory_cdnr_result.groupby("Recon_Period", dropna=False)
+                        if "Recon_Period" in _memory_cdnr_result.columns
+                        else [(meta["period"], _memory_cdnr_result)])
+        for _cdnr_period, _cdnr_frame in _cdnr_groups:
+            _cdnr_run_id = uuid.uuid4().hex
+            save_run(
+                st.session_state["memory_path"], _cdnr_run_id, str(_cdnr_period), "CDNR",
+                cdnr_result_to_run_lines(_cdnr_frame, meta["fy"])
+            )
+            _memory_statuses.update(apply_decisions(st.session_state["memory_path"], _cdnr_run_id))
+            _memory_run_ids.append(_cdnr_run_id)
+        st.session_state["memory_final_statuses"] = _memory_statuses
+        st.session_state["memory_run_ids"] = _memory_run_ids
+        st.session_state["memory_dirty"] = True
     st.session_state.app_stage = 'results'
     st.rerun()
 
