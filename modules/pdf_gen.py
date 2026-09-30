@@ -521,7 +521,7 @@ def _section(status, rows_data, W, lang='en'):
     act_rows=[[Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("action", "Action Required:"), ParagraphStyle("ar",fontName=_BASE_FONT_BOLD,fontSize=9,textColor=cfg["color"]))]]
     _actions = cfg["action"] if isinstance(cfg["action"], (list, tuple)) else [cfg["action"]]
     for _action_no, _action_text in enumerate(_actions, start=1):
-        act_rows.append([Paragraph(f"<b>{_action_no}.</b> {_action_text}", S("body"))])
+        act_rows.append([Paragraph(f"{_action_no}. {_action_text}", S("body"))])
     act_rows.append([Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("delay", "Note: Delayed action may result in ITC reversal and interest liability at our end."), S("small"))])
     act=Table(act_rows, colWidths=[W-16])
     act.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),cfg["bg"]),
