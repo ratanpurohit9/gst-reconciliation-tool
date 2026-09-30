@@ -128,7 +128,7 @@ import sqlite3
 import uuid
 from recon_memory import (create_memory, validate_memory, open_uploaded_memory,
                           export_memory, memory_filename, result_to_run_lines, save_run, export_exceptions, import_decisions,
-                          apply_decisions, make_row_id)
+                          apply_decisions, make_row_id, open_items, search_invoice)
 
 # --- PRE-PROCESSORS ---
 from modules.pre_processor  import smart_read_b2ba, process_amendments
@@ -276,6 +276,28 @@ if _memory_ready:
                     pd.DataFrame(_decision_result["unrecognized"]),
                     use_container_width=True, hide_index=True
                 )
+        with st.sidebar.expander("Open items", expanded=False):
+            _open_gstin = st.text_input("Filter GSTIN", key="memory_open_gstin")
+            _open_age = st.number_input("Minimum age (days)", min_value=0, value=0, step=30, key="memory_open_age")
+            _open_rows = open_items(_memory_path, _open_gstin, _open_age)
+            st.caption(f"{len(_open_rows)} unresolved invoice row(s), oldest first")
+            if _open_rows:
+                _open_cols = ["first_seen", "age_days", "month", "side", "gstin", "inv_no",
+                              "inv_date", "taxable", "engine_status", "final_status", "row_id"]
+                st.dataframe(pd.DataFrame(_open_rows)[_open_cols], use_container_width=True, hide_index=True)
+            _invoice_query = st.text_input(
+                "Search invoice, GSTIN or amount", key="memory_invoice_search"
+            )
+            if _invoice_query:
+                _history_rows = search_invoice(_memory_path, _invoice_query)
+                st.caption(f"{len(_history_rows)} matching month record(s)")
+                if _history_rows:
+                    _history_cols = ["month", "return_type", "side", "gstin", "inv_no", "inv_date",
+                                     "taxable", "engine_status", "final_status"]
+                    st.dataframe(pd.DataFrame(_history_rows)[_history_cols],
+                                 use_container_width=True, hide_index=True)
+                else:
+                    st.info("No matching invoice found in memory.")
         if st.session_state.get("memory_dirty", False):
             st.sidebar.error("Unsaved changes — download memory")
     except (ValueError, sqlite3.Error, OSError) as _memory_err:

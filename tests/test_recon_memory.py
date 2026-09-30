@@ -6,7 +6,7 @@ from io import BytesIO
 from recon_memory import (
     assign_row_ids, create_memory, make_row_id, normalize_invoice_number,
     open_uploaded_memory, export_memory, export_exceptions, memory_filename, result_to_run_lines,
-    import_decisions, apply_decisions, save_run, validate_memory,
+    import_decisions, apply_decisions, open_items, search_invoice, save_run, validate_memory,
 )
 
 
@@ -73,6 +73,24 @@ class MemoryTests(unittest.TestCase):
             lines[0]["taxable"] = 100
             save_run(path, "run-3", "April", "GSTR2B", [lines[0]], "2025-05-03")
             self.assertEqual(apply_decisions(path, "run-3")[book_id], "Needs review")
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_open_items_first_seen_and_monthly_search(self):
+        path = Path(__file__).parents[1] / "_test-open-items.db"
+        try:
+            create_memory(path, "Client A", "2025-26")
+            row = {"row_id": "row-x", "side": "B", "gstin": "G1", "inv_no": "INV/0458",
+                   "taxable": 250.5, "engine_status": "Invoices Not in GSTR-2B"}
+            save_run(path, "april", "April", "GSTR2B", [row], "2025-05-02")
+            save_run(path, "may", "May", "GSTR2B", [row], "2025-06-01")
+            items = open_items(path, gstin="g1", min_age_days=0)
+            self.assertEqual(len(items), 2)
+            self.assertEqual({i["first_seen"] for i in items}, {"2025-05-02"})
+            history = search_invoice(path, "inv-0458")
+            self.assertEqual([i["month"] for i in history], ["April", "May"])
+            self.assertEqual(len(search_invoice(path, "G1")), 2)
+            self.assertEqual(len(search_invoice(path, "250.5")), 2)
         finally:
             path.unlink(missing_ok=True)
 

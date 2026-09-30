@@ -370,6 +370,57 @@ def apply_decisions(path: str | Path, run_id: str) -> dict[str, str]:
     return final
 
 
+def open_items(path: str | Path, gstin: str = "", min_age_days: int = 0) -> list[dict[str, Any]]:
+    """Return the latest snapshot for each month/return, oldest unresolved first."""
+    with _connect(path) as db:
+        rows = db.execute("""WITH latest AS (
+            SELECT month,return_type,MAX(run_date) AS run_date FROM runs GROUP BY month,return_type
+        ) SELECT l.*,r.month,r.return_type,r.run_date FROM run_lines l JOIN runs r USING(run_id)
+          JOIN latest x ON x.month=r.month AND x.return_type=r.return_type AND x.run_date=r.run_date
+          ORDER BY l.first_seen ASC,l.gstin,l.inv_no""").fetchall()
+    today = date.today()
+    result = []
+    for row in rows:
+        item = dict(row)
+        if item.get("final_status") in {"Matched", "Matched (manual)", "Accepted difference"}:
+            continue
+        if gstin and gstin.casefold() not in str(item.get("gstin") or "").casefold():
+            continue
+        try:
+            age = (today - date.fromisoformat(str(item["first_seen"])[:10])).days
+        except (ValueError, TypeError):
+            age = 0
+        if age < max(0, int(min_age_days)):
+            continue
+        item["age_days"] = age
+        result.append(item)
+    return result
+
+
+def search_invoice(path: str | Path, query: str) -> list[dict[str, Any]]:
+    """Search invoice number, GSTIN or amount across snapshots, ordered by month."""
+    q = str(query or "").strip()
+    if not q:
+        return []
+    qnorm = normalize_invoice_number(q)
+    with _connect(path) as db:
+        rows = db.execute("""SELECT l.*,r.month,r.return_type,r.run_date FROM run_lines l
+            JOIN runs r USING(run_id) ORDER BY r.run_date,l.inv_date,l.gstin,l.inv_no""").fetchall()
+    found = []
+    seen = set()
+    for row in rows:
+        item = dict(row)
+        token = f"{item.get('gstin') or ''} {item.get('inv_no') or ''} {item.get('taxable') or ''}"
+        amount_match = q in str(item.get("taxable") or "")
+        invoice_match = qnorm and qnorm in normalize_invoice_number(item.get("inv_no"))
+        if q.casefold() in token.casefold() or invoice_match or amount_match:
+            key = (item["run_id"], item["row_id"])
+            if key not in seen:
+                seen.add(key)
+                found.append(item)
+    return found
+
+
 def touch_updated(path: str | Path) -> None:
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with _connect(path) as db:
