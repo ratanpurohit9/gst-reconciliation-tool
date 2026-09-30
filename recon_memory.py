@@ -258,23 +258,48 @@ def export_exceptions(path: str | Path) -> bytes:
 
 
 def import_decisions(path: str | Path, workbook_bytes: bytes) -> dict[str, Any]:
-    """Import edited exception rows; report missing, damaged, or ambiguous IDs."""
+    """Import controlled decisions from exception, B2B, CDNR, or combined workbooks.
+
+    All nonblank decision values are validated before any database writes, so one
+    typo rejects the upload atomically instead of partially applying decisions.
+    """
     import pandas as pd
     try:
-        frame = pd.read_excel(io.BytesIO(workbook_bytes), dtype=object)
+        sheets = pd.read_excel(io.BytesIO(workbook_bytes), sheet_name=None, dtype=object)
     except Exception as exc:
-        raise ValueError(f"Could not read decisions workbook: {exc}") from exc
-    normalized = {re.sub(r"[^a-z0-9]", "", str(col).casefold()): col for col in frame.columns}
-    id_col = normalized.get("rowid")
-    decision_col = normalized.get("decision")
-    if decision_col is None:
-        raise ValueError("Workbook must include a Decision column")
+        raise ValueError(f"Could not read decision workbook: {exc}") from exc
+    frames = []
+    for sheet_name, frame in sheets.items():
+        normalized = {re.sub(r"[^a-z0-9]", "", str(col).casefold()): col for col in frame.columns}
+        decision_col = next((normalized[k] for k in ("decision", "memorydecision", "userdecision", "statusdecision")
+                             if k in normalized), None)
+        if decision_col is not None:
+            frames.append((sheet_name, frame, normalized, decision_col))
+    if not frames:
+        raise ValueError("Workbook must include a Memory Decision column on a report data sheet")
+
+    allowed = {"link": "Link", "accept": "Accept", "action": "Action"}
 
     def cell(row, col):
         if col is None:
             return ""
         value = row.get(col, "")
         return "" if _is_missing(value) else str(value).strip()
+
+    bad_values = []
+    for sheet_name, frame, normalized, decision_col in frames:
+        for idx, row in frame.iterrows():
+            raw = cell(row, decision_col)
+            if raw and raw.casefold() not in allowed:
+                bad_values.append({"sheet": sheet_name, "row": int(idx) + 2, "value": raw})
+    if bad_values:
+        examples = "; ".join(
+            f"{item['sheet']} row {item['row']}: {item['value']!r}" for item in bad_values[:8]
+        )
+        raise ValueError(
+            "Upload rejected. Memory Decision accepts only Link, Accept, or Action. "
+            f"Correct these cells and upload again: {examples}"
+        )
 
     with _connect(path) as db:
         current_rows = db.execute("""SELECT l.row_id,l.side,l.gstin,l.inv_no,l.taxable
@@ -285,49 +310,69 @@ def import_decisions(path: str | Path, workbook_bytes: bytes) -> dict[str, Any]:
             known.setdefault(row["row_id"], dict(row))
         saved, unrecognized = 0, []
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        for idx, row in frame.iterrows():
-            decision = cell(row, decision_col).strip().title()
-            if not decision:
-                continue
-            row_id = cell(row, id_col)
-            reason = cell(row, normalized.get("reason"))
-            if not row_id or row_id not in known:
-                unrecognized.append({"row": int(idx) + 2, "row_id": row_id, "reason": "Row ID missing or not found"})
-                continue
-            if decision not in {"Link", "Accept", "Action"}:
-                unrecognized.append({"row": int(idx) + 2, "row_id": row_id, "reason": f"Unknown decision: {decision}"})
-                continue
-            linked_id = None
-            if decision == "Link":
-                link_value = cell(row, normalized.get("linkedto"))
-                if link_value in known:
-                    linked_id = link_value
-                else:
-                    source = known[row_id]
-                    candidates = [rid for rid, target in known.items()
-                        if target["side"] != source["side"]
-                        and str(target.get("gstin") or "").casefold() == str(source.get("gstin") or "").casefold()
-                        and normalize_invoice_number(target.get("inv_no")) == normalize_invoice_number(link_value)]
-                    if len(candidates) == 1:
-                        linked_id = candidates[0]
-                if not linked_id or linked_id == row_id or known[linked_id]["side"] == known[row_id]["side"]:
-                    unrecognized.append({"row": int(idx) + 2, "row_id": row_id,
-                                         "reason": "Linked To did not identify one opposite-side invoice"})
+        for sheet_name, frame, normalized, decision_col in frames:
+            generic_id_col = normalized.get("rowid")
+            books_id_col = next((normalized[k] for k in ("memorybooksrowid", "booksrowid", "rowidbooks")
+                                 if k in normalized), None)
+            gst_id_col = next((normalized[k] for k in ("memory2browid", "memorygstr2browid", "2browid",
+                                                        "gstr2browid", "rowid2b")
+                               if k in normalized), None)
+            linked_col = normalized.get("linkedto")
+            reason_col = normalized.get("reason")
+            for idx, row in frame.iterrows():
+                decision_text = cell(row, decision_col)
+                if not decision_text:
                     continue
-            targets = [(row_id, decision, linked_id, known[row_id])]
-            if decision == "Link":
-                targets.append((linked_id, decision, row_id, known[linked_id]))
-            for target_id, target_decision, target_link, target in targets:
-                db.execute("""INSERT INTO decisions(row_id,decision,linked_row_id,amount_then,reason,decided_on)
-                    VALUES(?,?,?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET
-                    decision=excluded.decision,linked_row_id=excluded.linked_row_id,
-                    amount_then=excluded.amount_then,reason=excluded.reason,decided_on=excluded.decided_on""",
-                    (target_id, target_decision, target_link, target.get("taxable"), reason, now))
-            saved += 1
+                decision = allowed[decision_text.casefold()]
+                books_id = cell(row, books_id_col)
+                gst_id = cell(row, gst_id_col)
+                row_id = cell(row, generic_id_col) or (books_id if books_id in known else gst_id)
+                reason = cell(row, reason_col)
+                if not row_id or row_id not in known:
+                    unrecognized.append({"sheet": sheet_name, "row": int(idx) + 2, "row_id": row_id,
+                                         "reason": "Row ID missing or not found in this memory"})
+                    continue
+
+                linked_id = None
+                if decision == "Link":
+                    link_value = cell(row, linked_col)
+                    if not link_value and books_id in known and gst_id in known and books_id != gst_id:
+                        linked_id = gst_id if row_id == books_id else books_id
+                    elif link_value in known:
+                        linked_id = link_value
+                    else:
+                        source = known[row_id]
+                        candidates = [rid for rid, target in known.items()
+                            if target["side"] != source["side"]
+                            and str(target.get("gstin") or "").casefold() == str(source.get("gstin") or "").casefold()
+                            and normalize_invoice_number(target.get("inv_no")) == normalize_invoice_number(link_value)]
+                        if len(candidates) == 1:
+                            linked_id = candidates[0]
+                    if (not linked_id or linked_id == row_id or linked_id not in known
+                            or known[linked_id]["side"] == known[row_id]["side"]):
+                        unrecognized.append({"sheet": sheet_name, "row": int(idx) + 2, "row_id": row_id,
+                                             "reason": "Linked To did not identify one opposite-side invoice"})
+                        continue
+
+                target_ids = [row_id]
+                if decision in {"Accept", "Action"}:
+                    for candidate in (books_id, gst_id):
+                        if candidate in known and candidate not in target_ids:
+                            target_ids.append(candidate)
+                elif decision == "Link":
+                    target_ids = [row_id, linked_id]
+                for target_id in target_ids:
+                    target = known[target_id]
+                    target_link = (linked_id if target_id == row_id else row_id) if decision == "Link" else None
+                    db.execute("""INSERT INTO decisions(row_id,decision,linked_row_id,amount_then,reason,decided_on)
+                        VALUES(?,?,?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET
+                        decision=excluded.decision,linked_row_id=excluded.linked_row_id,
+                        amount_then=excluded.amount_then,reason=excluded.reason,decided_on=excluded.decided_on""",
+                        (target_id, decision, target_link, target.get("taxable"), reason, now))
+                saved += 1
         if saved:
             db.execute("UPDATE meta SET value=? WHERE key='last_updated'", (now,))
     return {"saved": saved, "unrecognized": unrecognized}
-
 
 def apply_decisions(path: str | Path, run_id: str) -> dict[str, str]:
     """Set final_status for one run without changing the engine's original verdict."""
