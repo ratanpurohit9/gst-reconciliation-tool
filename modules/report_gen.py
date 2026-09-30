@@ -564,6 +564,12 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
                 ws.write(6,i,h,fmt_orange if 2<=i<=7 else fmt_green if 8<=i<=13 else fmt_gray if 14<=i<=17 else fmt_yellow if h in ('Match Logic','Match Reason') else fmt_blue)
             ws.set_column(3,3,12,fmt_date_col); ws.set_column(9,9,12,fmt_date_col)
         ws.set_column(0,1,20); ws.set_column(2,2,18); ws.set_column(8,8,18)
+        # Keep the Smart Matched label readable beside its specific match logic.
+        status_col = heads.index('Status') if 'Status' in heads else heads.index('Recon_Status')
+        logic_col = heads.index('Match Logic') if 'Match Logic' in heads else None
+        ws.set_column(status_col, status_col, 34)
+        if logic_col is not None:
+            ws.set_column(logic_col, logic_col, 22)
         if conf_col is not None and len(df_export) > 0:
             first_row, last_row = 7, 7 + len(df_export) - 1
             ws.conditional_format(first_row, conf_col, last_row, conf_col, {
