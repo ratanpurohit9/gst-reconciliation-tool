@@ -16,6 +16,9 @@ from reportlab.platypus import (
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import os as _os
+import re as _re
+from html import escape as _html_escape
+from reportlab.graphics.shapes import Drawing, Circle, String
 
 # Font chain: Nirmala UI / Segoe UI / DejaVuSans (₹ support) → Helvetica (safe fallback)
 _BASE_FONT = _BASE_FONT_BOLD = None
@@ -171,7 +174,7 @@ STATUS_CONFIG = {
 }
 
 
-PDF_TRANSLATIONS = {"hi":{"title":"जीएसटी मिलान सूचना","date":"दिनांक","to":"प्रति,","dept":"लेखा / जीएसटी विभाग","subject":"जीएसटीआर-2बी बनाम खरीद पुस्तकों का मिलान — विसंगति सूचना","intro":"महोदय / महोदया,<br/>खरीद पुस्तिका और जीएसटीआर-2बी के मिलान में <b>{n} चालान</b> तथा <b>{k} प्रकार की विसंगतियाँ</b मिली हैं। कृपया जाँच कर शीघ्र सुधार करें।","summary":["कुल चालान","कुल कर योग्य मूल्य","कुल कर"],"action":"आवश्यक कार्रवाई:","delay":"नोट: देरी से आईटीसी वापस हो सकती है और ब्याज देय हो सकता है।","close":"कृपया सभी प्रविष्टियों का मिलान कर आगामी जीएसटीआर-1 में आवश्यक संशोधन करें। सुधार पूरा होने पर लिखित पुष्टि दें।","faith":"सादर,","sign":"[अधिकृत हस्ताक्षरकर्ता]","status_labels":["बिल अपलोड नहीं किया","अज्ञात पोर्टल प्रविष्टि","दिनांक में अंतर","चालान संख्या में अंतर","मूल्य में अंतर","कर राशि में त्रुटि","संभावित मिलान","समूह मिलान सुझाव","मैन्युअल लिंक"],"status_desc":["पुस्तिका में दर्ज बिल जीएसटीआर-2बी में नहीं दिख रहा।","चालान जीएसटीआर-2बी में है, पर खरीद पुस्तिका में नहीं मिला।","चालान की तारीख जीएसटीआर-1 और पुस्तिका में अलग है।","जीएसटीआर-1 में चालान संख्या पुस्तिका से अलग है।","कर योग्य मूल्य या कर राशि रिकॉर्ड से अलग है।","IGST/CGST/SGST राशि में अंतर है।","संभावित मिलान है; मैन्युअल सत्यापन आवश्यक है।","कई चालान एक समेकित प्रविष्टि से मेल खा सकते हैं।","यह चालान मैन्युअल रूप से जोड़ा गया है; विवरण सत्यापित करें।"],"status_action":["जीएसटीआर-1 में लंबित बिल शीघ्र अपलोड कर पुष्टि दें।","डिलीवरी प्रमाण या चालान प्रति दें; गलती से अपलोड हुआ हो तो क्रेडिट नोट जारी करें।","जीएसटीआर-1 में तारीख पुस्तिका के अनुसार संशोधित करें।","जीएसटीआर-1 में चालान संख्या पुस्तिका के अनुसार संशोधित करें।","जीएसटीआर-1 में मूल्य और कर राशि हमारे रिकॉर्ड के अनुसार संशोधित करें।","जीएसटीआर-1 में IGST/CGST/SGST कर विभाजन जाँचें और सुधारें।","जाँचकर पुष्टि करें कि चालान आपके रिकॉर्ड से मेल खाता है या नहीं।","प्रविष्टियों की जाँच कर पुष्टि करें या संशोधन करें।","विवरण सत्यापित करें और अंतर हो तो जीएसटीआर-1 में संशोधन करें।"],"table":["क्र.","चालान संख्या<br/>(पुस्तक → पोर्टल)","दिनांक","पुस्तक<br/>कर योग्य","पुस्तक<br/>कर","पोर्टल<br/>कर योग्य","पोर्टल<br/>कर","अंतर","चालान सं.","कर योग्य","कुल","IGST","CGST","कुल","चालान","कुल","ઇન્વૉઇસ"]},"gu":{"title":"GST રિકન્સિલિએશન નોટિસ","date":"તારીખ","to":"પ્રતિ,","dept":"હિસાબ / GST વિભાગ","subject_tag":"વિષય:","subject":"GSTR-2B અને Purchase Books વચ્ચેના તફાવત અંગે નોટિસ","intro":"માનનીય મહોદય / મહોદયા, અમારી Purchase Register અને GSTR-2Bના સમાધાન દરમિયાન {n} ઇન્વૉઇસમાં {k} પ્રકારની વિસંગતતા જોવા મળી છે. કૃપા કરીને નીચે આપેલી વિગતો તપાસી જરૂરી કાર્યવાહી કરવા વિનંતી છે.","summary":["કુલ ઇન્વૉઇસ","કુલ કરપાત્ર મૂલ્ય","કુલ કર"],"action":"જરૂરી કાર્યવાહી:","delay":"નોંધ: વિલંબથી ITC રિવર્સલ અને વ્યાજની જવાબદારી થઈ શકે છે.","close":"તમામ એન્ટ્રીઓનું સમાધાન કરી આગામી GSTR-1 રિટર્નમાં જરૂરી સુધારા કરો. સુધારા પછી લેખિત પુષ્ટિ આપશો.","faith":"આપનો વિશ્વાસુ,","sign":"[અધિકૃત સહીકર્તા]","status_labels":["બિલ અપલોડ થયું નથી","અજાણી પોર્ટલ એન્ટ્રી","તારીખમાં ફેર","ઇન્વૉઇસ નંબરમાં ફેર","મૂલ્યમાં ફેર","કરની રકમમાં ભૂલ","સંભવિત મેળ","જૂથ મેળ સૂચન","મેન્યુઅલ લિંક"],"status_desc":["ચોપડામાં નોંધાયેલું બિલ GSTR-2Bમાં દેખાતું નથી.","ઇન્વૉઇસ GSTR-2Bમાં છે, પરંતુ ખરીદી ચોપડામાં મળ્યું નથી.","GSTR-1 અને ખરીદી રેકોર્ડમાં તારીખ અલગ છે.","GSTR-1માં ઇન્વૉઇસ નંબર ખરીદી ચોપડાથી અલગ છે.","કરપાત્ર મૂલ્ય અથવા કરની રકમ રેકોર્ડથી અલગ છે.","IGST/CGST/SGSTની રકમમાં ફેર છે.","સંભવિત મેળ છે; મેન્યુઅલ ચકાસણી જરૂરી છે.","કેટલાક ઇન્વૉઇસ એક સંકલિત એન્ટ્રી સાથે મેળ ખાઈ શકે છે.","આ ઇન્વૉઇસ મેન્યુઅલી જોડાયું છે; વિગતો ચકાસો."],"status_action":[["કૃપા કરીને ઉપર દર્શાવેલ બિલ તમારી GSTR-1 રિટર્નમાં અપલોડ કરી આપશો.","અપલોડ પૂર્ણ થયા પછી અમને પુષ્ટિ આપશો."],["કૃપા કરીને ડિલિવરીનો પુરાવો અથવા ઇન્વૉઇસની નકલ મોકલશો.","જો એન્ટ્રી ભૂલથી અપલોડ થઈ હોય, તો યોગ્ય ક્રેડિટ નોટ જારી કરી સુધારો કરશો."],["કૃપા કરીને GSTR-1માં ઇન્વૉઇસની તારીખ ખરીદી રેકોર્ડ મુજબ સુધારશો.","સુધારા પછી અપડેટ થયેલ વિગતોની પુષ્ટિ આપશો."],["કૃપા કરીને GSTR-1માં ઇન્વૉઇસ નંબર ખરીદી ચોપડા મુજબ સુધારશો.","સુધારા પછી અપડેટ થયેલ વિગતોની પુષ્ટિ આપશો."],["કૃપા કરીને કરપાત્ર મૂલ્ય અને કરની રકમ અમારા રેકોર્ડ મુજબ સુધારશો.","સુધારેલ GSTR-1ની પુષ્ટિ આપશો."],["કૃપા કરીને IGST/CGST/SGSTનું કર વિભાજન તપાસી જરૂરી સુધારો કરશો.","સુધારા પછી પુષ્ટિ આપશો."],["કૃપા કરીને તપાસી પુષ્ટિ કરશો કે આ ઇન્વૉઇસ તમારા રેકોર્ડ સાથે મેળ ખાય છે કે નહીં.","ફેરફાર જરૂરી હોય તો સુધારેલ વિગતો મોકલશો."],["કૃપા કરીને સંબંધિત તમામ ઇન્વૉઇસ સામે આ સંકલિત એન્ટ્રી ચકાસશો.","મેળની પુષ્ટિ આપશો અથવા જરૂરી સુધારો કરશો."],["કૃપા કરીને મેન્યુઅલી જોડાયેલ ઇન્વૉઇસની વિગતો ચકાસશો.","કોઈ તફાવત હોય તો GSTR-1માં સુધારો કરી પુષ્ટિ આપશો."]],"table":["ક્ર.","ઇન્વૉઇસ નંબર<br/>(ચોપડા → પોર્ટલ)","તારીખ","ચોપડા<br/>કરપાત્ર","ચોપડા<br/>કર","પોર્ટલ<br/>કરપાત્ર","પોર્ટલ<br/>કર","ફેર","ઇન્વૉઇસ નં.","કરપાત્ર","કુલ","IGST","CGST","કુલ","ઇન્વૉઇસ","કુલ","ઇન્વૉઇસ"]}}
+PDF_TRANSLATIONS = {"hi":{"title":"जीएसटी मिलान सूचना","date":"दिनांक","to":"प्रति,","dept":"लेखा / जीएसटी विभाग","subject":"जीएसटीआर-2बी बनाम खरीद पुस्तकों का मिलान — विसंगति सूचना","intro":"महोदय / महोदया,<br/>खरीद पुस्तिका और जीएसटीआर-2बी के मिलान में <b>{n} चालान</b> तथा <b>{k} प्रकार की विसंगतियाँ</b मिली हैं। कृपया जाँच कर शीघ्र सुधार करें।","summary":["कुल चालान","कुल कर योग्य मूल्य","कुल कर"],"action":"आवश्यक कार्रवाई:","delay":"नोट: देरी से आईटीसी वापस हो सकती है और ब्याज देय हो सकता है।","close":"कृपया सभी प्रविष्टियों का मिलान कर आगामी जीएसटीआर-1 में आवश्यक संशोधन करें। सुधार पूरा होने पर लिखित पुष्टि दें।","faith":"सादर,","sign":"[अधिकृत हस्ताक्षरकर्ता]","status_labels":["बिल अपलोड नहीं किया","अज्ञात पोर्टल प्रविष्टि","दिनांक में अंतर","चालान संख्या में अंतर","मूल्य में अंतर","कर राशि में त्रुटि","संभावित मिलान","समूह मिलान सुझाव","मैन्युअल लिंक"],"status_desc":["पुस्तिका में दर्ज बिल जीएसटीआर-2बी में नहीं दिख रहा।","चालान जीएसटीआर-2बी में है, पर खरीद पुस्तिका में नहीं मिला।","चालान की तारीख जीएसटीआर-1 और पुस्तिका में अलग है।","जीएसटीआर-1 में चालान संख्या पुस्तिका से अलग है।","कर योग्य मूल्य या कर राशि रिकॉर्ड से अलग है।","IGST/CGST/SGST राशि में अंतर है।","संभावित मिलान है; मैन्युअल सत्यापन आवश्यक है।","कई चालान एक समेकित प्रविष्टि से मेल खा सकते हैं।","यह चालान मैन्युअल रूप से जोड़ा गया है; विवरण सत्यापित करें।"],"status_action":["जीएसटीआर-1 में लंबित बिल शीघ्र अपलोड कर पुष्टि दें।","डिलीवरी प्रमाण या चालान प्रति दें; गलती से अपलोड हुआ हो तो क्रेडिट नोट जारी करें।","जीएसटीआर-1 में तारीख पुस्तिका के अनुसार संशोधित करें।","जीएसटीआर-1 में चालान संख्या पुस्तिका के अनुसार संशोधित करें।","जीएसटीआर-1 में मूल्य और कर राशि हमारे रिकॉर्ड के अनुसार संशोधित करें।","जीएसटीआर-1 में IGST/CGST/SGST कर विभाजन जाँचें और सुधारें।","जाँचकर पुष्टि करें कि चालान आपके रिकॉर्ड से मेल खाता है या नहीं।","प्रविष्टियों की जाँच कर पुष्टि करें या संशोधन करें।","विवरण सत्यापित करें और अंतर हो तो जीएसटीआर-1 में संशोधन करें।"],"table":["क्र.","चालान संख्या<br/>(पुस्तक → पोर्टल)","दिनांक","पुस्तक<br/>कर योग्य","पुस्तक<br/>कर","पोर्टल<br/>कर योग्य","पोर्टल<br/>कर","अंतर","चालान सं.","कर योग्य","कुल","IGST","CGST","कुल","चालान","कुल","ઇન્વૉઇસ"]},"gu":{"title":"GST રિકન્સિલિએશન નોટિસ","date":"તારીખ","to":"પ્રતિ,","dept":"હિસાબ / GST વિભાગ","subject_tag":"વિષય:","subject":"GSTR-2B અને Purchase Books વચ્ચેના તફાવત અંગે નોટિસ","intro":"માનનીય સર / મેડમ, અમારી Purchase Register અને GSTR-2Bનું રિકન્સિલિએશન કરતાં નીચે દર્શાવેલ {n} Invoice(s)માં {k} પ્રકારની વિસંગતતા જોવા મળી છે. તેના કારણે આપના ITC (Input Tax Credit) પર અસર થઈ શકે છે. કૃપા કરીને નીચેની વિગતો તપાસી જરૂરી કાર્યવાહી કરવા વિનંતી છે.","summary":["કુલ ઇન્વૉઇસની સંખ્યા","કુલ Taxable Value","કુલ GST (Tax)"],"action":"જરૂરી કાર્યવાહી:","delay":"નોંધ: વિલંબથી ITC રિવર્સલ અને વ્યાજની જવાબદારી થઈ શકે છે.","close":"આથી વિનંતી છે કે કૃપા કરીને આ બાબતે પ્રાથમિકતા આપી આગામી GSTR-1 ફાઇલિંગમાં જરૂરી કાર્યવાહી કરશો.","faith":"આપનો વિશ્વાસુ,","sign":"[અધિકૃત સહીકર્તા]","status_labels":["બિલ GSTR-1 માં Upload કરાવેલ નથી","અજાણી પોર્ટલ એન્ટ્રી","તારીખમાં ફેર","ઇન્વૉઇસ નંબરમાં ફેર","મૂલ્યમાં ફેર","કરની રકમમાં ભૂલ","સંભવિત મેળ","જૂથ મેળ સૂચન","મેન્યુઅલ લિંક"],"status_desc":["આ Invoice અમારી Purchase Booksમાં નોંધાયેલ છે, પરંતુ આપની તરફથી GSTR-1માં Upload કરવામાં આવેલ નથી. તેથી તે Invoice GSTR-2Bમાં દેખાતો નથી.","ઇન્વૉઇસ GSTR-2Bમાં છે, પરંતુ ખરીદી ચોપડામાં મળ્યું નથી.","GSTR-1 અને ખરીદી રેકોર્ડમાં તારીખ અલગ છે.","GSTR-1માં ઇન્વૉઇસ નંબર ખરીદી ચોપડાથી અલગ છે.","કરપાત્ર મૂલ્ય અથવા કરની રકમ રેકોર્ડથી અલગ છે.","IGST/CGST/SGSTની રકમમાં ફેર છે.","સંભવિત મેળ છે; મેન્યુઅલ ચકાસણી જરૂરી છે.","કેટલાક ઇન્વૉઇસ એક સંકલિત એન્ટ્રી સાથે મેળ ખાઈ શકે છે.","આ ઇન્વૉઇસ મેન્યુઅલી જોડાયું છે; વિગતો ચકાસો."],"status_action":[["કૃપા કરીને ઉપર દર્શાવેલ બિલ તમારી GSTR-1 રિટર્નમાં અપલોડ કરી આપશો.","અપલોડ પૂર્ણ થયા પછી અમને પુષ્ટિ આપશો."],["કૃપા કરીને ડિલિવરીનો પુરાવો અથવા ઇન્વૉઇસની નકલ મોકલશો.","જો એન્ટ્રી ભૂલથી અપલોડ થઈ હોય, તો યોગ્ય ક્રેડિટ નોટ જારી કરી સુધારો કરશો."],["કૃપા કરીને GSTR-1માં ઇન્વૉઇસની તારીખ ખરીદી રેકોર્ડ મુજબ સુધારશો.","સુધારા પછી અપડેટ થયેલ વિગતોની પુષ્ટિ આપશો."],["કૃપા કરીને GSTR-1માં ઇન્વૉઇસ નંબર ખરીદી ચોપડા મુજબ સુધારશો.","સુધારા પછી અપડેટ થયેલ વિગતોની પુષ્ટિ આપશો."],["કૃપા કરીને કરપાત્ર મૂલ્ય અને કરની રકમ અમારા રેકોર્ડ મુજબ સુધારશો.","સુધારેલ GSTR-1ની પુષ્ટિ આપશો."],["કૃપા કરીને IGST/CGST/SGSTનું કર વિભાજન તપાસી જરૂરી સુધારો કરશો.","સુધારા પછી પુષ્ટિ આપશો."],["કૃપા કરીને તપાસી પુષ્ટિ કરશો કે આ ઇન્વૉઇસ તમારા રેકોર્ડ સાથે મેળ ખાય છે કે નહીં.","ફેરફાર જરૂરી હોય તો સુધારેલ વિગતો મોકલશો."],["કૃપા કરીને સંબંધિત તમામ ઇન્વૉઇસ સામે આ સંકલિત એન્ટ્રી ચકાસશો.","મેળની પુષ્ટિ આપશો અથવા જરૂરી સુધારો કરશો."],["કૃપા કરીને મેન્યુઅલી જોડાયેલ ઇન્વૉઇસની વિગતો ચકાસશો.","કોઈ તફાવત હોય તો GSTR-1માં સુધારો કરી પુષ્ટિ આપશો."]],"table":["Sr.","Invoice No. (Books → Portal)","Invoice Date","Taxable Value (Books)","Tax (Books)","Taxable Value (Portal)","Tax (Portal)","Difference","Invoice No.","Taxable Value","Total Invoice Value","IGST","CGST","SGST","TOTAL","Invoice(s)","Invoice"]}}
 
 def get_status_config(status, lang='en'):
     for key in sorted(STATUS_CONFIG, key=len, reverse=True):
@@ -244,6 +247,21 @@ def S(name, **kwargs):
     return ParagraphStyle(name, **kw)
 
 
+def _translated_para(text, style):
+    """Render ASCII tokens in a Latin-capable face inside Gujarati/Hindi copy."""
+    text = str(text)
+    indic_fonts = set(_FONT_FOR_LANG.values())
+    if (_BASE_FONT, _BASE_FONT_BOLD) not in indic_fonts:
+        return Paragraph(text, style)
+    escaped = _html_escape(text)
+    escaped = _re.sub(
+        r"[A-Za-z0-9]+(?:[./()+-][A-Za-z0-9]+)*",
+        lambda match: f'<font name="{_LATIN_BASE_FONT}">{match.group(0)}</font>',
+        escaped,
+    )
+    return Paragraph(escaped, style)
+
+
 def SL(name, **kwargs):
     """Latin-capable counterpart for names and numeric data inside Indic notices."""
     base = S(name, **kwargs)
@@ -258,7 +276,7 @@ def SL(name, **kwargs):
 def _header_table(company_name, gstin, today, W, lang='en'):
     left  = [[Paragraph(company_name.upper(), SL("title"))],
               [Paragraph(f"GSTIN: {gstin}", SL("subtitle"))]]
-    right = [[Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("title", "GST RECONCILIATION NOTICE"), S("title"))],
+    right = [[_translated_para(PDF_TRANSLATIONS.get(lang, {}).get("title", "GST RECONCILIATION NOTICE"), S("title"))],
               [Paragraph(f"{PDF_TRANSLATIONS.get(lang, {}).get('date', 'Date')}: {today}", S("subtitle"))]]
 
     lt = Table(left,  colWidths=[W * 0.55])
@@ -281,7 +299,7 @@ def _header_table(company_name, gstin, today, W, lang='en'):
 
 def _to_box(vendor_name, vendor_gstin, W, lang='en'):
     rows = [[Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("to", "To,"), S("small"))],
-             [Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("dept", "The Accounts / GST Department"), S("bold"))],
+             [_translated_para(PDF_TRANSLATIONS.get(lang, {}).get("dept", "The Accounts / GST Department"), S("bold"))],
              [Paragraph(vendor_name, ParagraphStyle("vn", fontName=_LATIN_BASE_FONT_BOLD, fontSize=11, textColor=DARK_NAVY))],
              [Paragraph(f"GSTIN: {vendor_gstin}", SL("small"))]]
     t = Table(rows, colWidths=[W - 16])
@@ -298,7 +316,7 @@ def _summary_box(inv_count, tot_tax, tot_igst, tot_cgst, tot_sgst, status_counts
 
     # Row 1: 3 stat cells
     def stat_cell(lbl, val, vc=DARK_NAVY, cw=0):
-        t = Table([[Paragraph(lbl, S("lbl_stat"))],[Paragraph(val, ParagraphStyle("sv",fontName=_LATIN_BASE_FONT_BOLD,fontSize=11,textColor=vc))]],
+        t = Table([[_translated_para(lbl, S("lbl_stat"))],[Paragraph(val, ParagraphStyle("sv",fontName=_LATIN_BASE_FONT_BOLD,fontSize=11,textColor=vc))]],
                   colWidths=[cw or (W/3 - 8)])
         t.setStyle(TableStyle([('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4),
                                 ('LEFTPADDING',(0,0),(-1,-1),6),('RIGHTPADDING',(0,0),(-1,-1),6)]))
@@ -381,7 +399,7 @@ def _invoice_table(rows_data, status, W, lang='en'):
     scale = (W - 2) / sum(cw_list)
     cw_list = [c * scale for c in cw_list]
 
-    hdr_row  = [Paragraph(h, S("tbl_hdr")) for h in headers]
+    hdr_row  = [_translated_para(h, S("tbl_hdr")) for h in headers]
     tbl_data = [hdr_row]
 
     tot_taxable=tot_igst=tot_cgst=tot_sgst=0.0
@@ -501,7 +519,7 @@ def _section(status, rows_data, W, lang='en'):
     cfg=get_status_config(status, lang)
     elems=[]
 
-    badge_data=[[Paragraph(f"  [{cfg['icon']}]  {cfg['label']}",
+    badge_data=[[_translated_para(f"  [{cfg['icon']}]  {cfg['label']}",
                             ParagraphStyle("bh",fontName=_BASE_FONT_BOLD,fontSize=9,textColor=WHITE)),
                   Paragraph("{} {}".format(len(rows_data), PDF_TRANSLATIONS[lang]["table"][15] if lang in PDF_TRANSLATIONS else "Invoice(s)"),
                              ParagraphStyle("bc",fontName=_BASE_FONT_BOLD,fontSize=8,textColor=WHITE,alignment=TA_RIGHT))]]
@@ -512,17 +530,31 @@ def _section(status, rows_data, W, lang='en'):
                                 ('BOX',(0,0),(-1,-1),0.5,cfg["color"])]))
     elems.append(badge)
     elems.append(Spacer(1,3))
-    elems.append(Paragraph(cfg["desc"], S("body")))
+    elems.append(_translated_para(cfg["desc"], S("body")))
     elems.append(Spacer(1,4))
     elems.append(_invoice_table(rows_data, status, W, lang))
     elems.append(Spacer(1,6))
 
     # Action box
-    act_rows=[[Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("action", "Action Required:"), ParagraphStyle("ar",fontName=_BASE_FONT_BOLD,fontSize=9,textColor=cfg["color"]))]]
+    act_rows=[[_translated_para(PDF_TRANSLATIONS.get(lang, {}).get("action", "Action Required:"), ParagraphStyle("ar",fontName=_BASE_FONT_BOLD,fontSize=9,textColor=cfg["color"]))]]
     _actions = cfg["action"] if isinstance(cfg["action"], (list, tuple)) else [cfg["action"]]
-    for _action_no, _action_text in enumerate(_actions, start=1):
-        act_rows.append([Paragraph(f"{_action_no}. {_action_text}", S("body"))])
-    act_rows.append([Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("delay", "Note: Delayed action may result in ITC reversal and interest liability at our end."), S("small"))])
+    if lang == "gu" and isinstance(cfg["action"], (list, tuple)):
+        for _action_no, _action_text in enumerate(_actions, start=1):
+            _marker = Drawing(16, 16)
+            _marker.add(Circle(8, 8, 7, fillColor=ACCENT_RED, strokeColor=ACCENT_RED))
+            _marker.add(String(8, 5.3, str(_action_no), fontName=_LATIN_BASE_FONT_BOLD,
+                               fontSize=7, fillColor=WHITE, textAnchor="middle"))
+            _row = Table([[_marker, _translated_para(_action_text, S("body"))]],
+                         colWidths=[22, W - 38])
+            _row.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+                                      ('LEFTPADDING',(0,0),(-1,-1),0),
+                                      ('RIGHTPADDING',(0,0),(-1,-1),2),
+                                      ('TOPPADDING',(0,0),(-1,-1),2),
+                                      ('BOTTOMPADDING',(0,0),(-1,-1),2)]))
+            act_rows.append([_row])
+    else:
+        act_rows.append([_translated_para(_actions[0], S("body"))])
+    act_rows.append([_translated_para(PDF_TRANSLATIONS.get(lang, {}).get("delay", "Note: Delayed action may result in ITC reversal and interest liability at our end."), S("small"))])
     act=Table(act_rows, colWidths=[W-16])
     act.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),cfg["bg"]),
                                ('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5),
@@ -613,10 +645,10 @@ def create_vendor_pdf(df, vendor_name, company_name, gst_in_company, lang='en'):
     elements.append(_to_box(vendor_name, vendor_gstin, W, lang))
     elements.append(Spacer(1,8))
     elements.append(Paragraph(
-        f"<b>{PDF_TRANSLATIONS.get(lang, {}).get('subject_tag', 'Subject:')}</b> {PDF_TRANSLATIONS.get(lang, {}).get('subject', 'GSTR-2B vs Purchase Books Reconciliation — Discrepancy Notice')}",
-        S("body")))
+        f"{PDF_TRANSLATIONS.get(lang, {}).get('subject_tag', 'Subject:')} {PDF_TRANSLATIONS.get(lang, {}).get('subject', 'GSTR-2B vs Purchase Books Reconciliation — Discrepancy Notice')}",
+        S("bold") if lang in PDF_TRANSLATIONS else S("bold")))
     elements.append(Spacer(1,4))
-    elements.append(Paragraph(
+    elements.append(_translated_para(
         PDF_TRANSLATIONS[lang]["intro"].format(n=tot_inv, k=len(st_counts)) if lang in PDF_TRANSLATIONS else
         f"Dear Sir / Madam,<br/>Upon reconciliation of our Purchase Register with GSTR-2B data, "
         f"we have identified <b>{tot_inv} invoice(s)</b> with discrepancies across "
@@ -638,7 +670,7 @@ def create_vendor_pdf(df, vendor_name, company_name, gst_in_company, lang='en'):
 
     elements.append(HRFlowable(width=W, thickness=1, color=colors.HexColor("#CCCCCC")))
     elements.append(Spacer(1,6))
-    elements.append(Paragraph(
+    elements.append(_translated_para(
         PDF_TRANSLATIONS.get(lang, {}).get("close", "We request you to treat this matter with priority and reconcile all entries in the upcoming GSTR-1 filing."), S("body")))
     elements.append(Spacer(1,16))
 
