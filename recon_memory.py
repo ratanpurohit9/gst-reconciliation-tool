@@ -197,7 +197,7 @@ def cdnr_result_to_run_lines(result, financial_year: str) -> list[dict[str, Any]
                 note_date = note_date.isoformat()
             taxable = value("Taxable Value")
             lines.append({
-                "row_id": make_row_id(gstin, note, side, doc, financial_year),
+                "row_id": make_row_id(gstin, note, side, f"CDNR:{doc}", financial_year),
                 "side": side, "gstin": str(gstin), "inv_no": str(note),
                 "inv_date": str(note_date) if note_date is not None else None,
                 "taxable": taxable, "igst": value("IGST"), "cgst": value("CGST"),
@@ -486,6 +486,8 @@ def apply_memory_final_statuses(frame, financial_year: str, statuses: Mapping[st
             else:
                 doc = next((row.get(k + suffix) for k in ("Document Type", "Invoice Type", "Doc Type")
                             if row.get(k + suffix) is not None and not _is_missing(row.get(k + suffix))), "")
+            if is_cdnr:
+                doc = f"CDNR:{doc}"
             row_id = make_row_id(gstin, invoice, side, doc, financial_year)
             value = statuses.get(row_id)
             if value:
