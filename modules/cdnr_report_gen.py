@@ -416,11 +416,13 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
                         if row.get(k + suffix) is not None and not pd.isna(row.get(k + suffix))), '')
             return make_row_id(gstin, note, side, f"CDNR:{doc}", fy)
 
+        _status_decision_col = use_heads.index('Status') + 1
+        df_export.insert(_status_decision_col, 'Status Decision', '')
+        use_heads.insert(_status_decision_col, 'Status Decision')
         df_export['Books Row ID'] = [_memory_row_id(row, 'B') for _, row in df_sub.iterrows()]
         df_export['2B Row ID'] = [_memory_row_id(row, 'G') for _, row in df_sub.iterrows()]
-        df_export['Memory Decision'] = ''
         df_export['Linked To'] = ''
-        use_heads = use_heads + ['Books Row ID', '2B Row ID', 'Memory Decision', 'Linked To']
+        use_heads = use_heads + ['Books Row ID', '2B Row ID', 'Linked To']
         df_export.to_excel(writer,sheet_name=sheet_name,startrow=7,header=False,index=False)
         ws=writer.sheets[sheet_name]
         _meta(ws,banner_label,len(use_heads)-1)
@@ -436,26 +438,27 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
             ws.write(6,ci,h,FMT['orange'] if bk_s<=ci<=bk_e else FMT['green'] if gt_s<=ci<=gt_e else FMT['gray'] if df_s2<=ci<=df_e2 else FMT['yellow'] if ci==st_i else FMT['blue'])
         ws.set_column(d_bk,d_bk,12,FMT['date']); ws.set_column(d_gt,d_gt,12,FMT['date'])
         ws.set_column(0,0,20); ws.set_column(1,1,22); ws.set_column(2,2,18)
-        _memory_decision_col = use_heads.index('Memory Decision')
+        _memory_decision_col = use_heads.index('Status Decision')
         _memory_books_id_col = use_heads.index('Books Row ID')
         _memory_2b_id_col = use_heads.index('2B Row ID')
         ws.set_column(_memory_books_id_col, _memory_2b_id_col, None, None, {'hidden': True})
         ws.set_column(_memory_decision_col, _memory_decision_col, 20)
-        ws.set_column(_memory_decision_col + 1, _memory_decision_col + 1, 20)
+        _memory_linked_col = use_heads.index('Linked To')
+        ws.set_column(_memory_linked_col, _memory_linked_col, 20)
         ws.data_validation(7, _memory_decision_col, max(7, 6 + len(df_export)), _memory_decision_col, {
             'validate': 'list', 'source': ['Link', 'Accept', 'Action'],
-            'input_title': 'Choose a decision', 'input_message': 'Use only Link, Accept, or Action.',
-            'error_title': 'Invalid decision', 'error_message': 'Choose Link, Accept, or Action from the list.',
+            'input_title': 'Choose a decision', 'input_message': 'Select Link, Accept, or Action for the memory decision.',
+            'error_title': 'Invalid decision', 'error_message': 'Select a value from the dropdown: Link, Accept, or Action.',
             'error_type': 'stop'
         })
         ws.set_column(4,4,8); ws.set_column(5,8,11); ws.set_column(gt_s,gt_s,20)
         if is_sug:
             ws.set_column(10,10,22); ws.set_column(11,11,16); ws.set_column(12,12,18)
             ws.set_column(14,14,8); ws.set_column(15,18,11)
-            ws.set_column(SUG_DF_S,SUG_DF_E,12); ws.set_column(SUG_ST_I,SUG_ST_I,30); ws.set_column(SUG_ML_I,SUG_ML_I,22)
+            ws.set_column(SUG_DF_S,SUG_DF_E,12); ws.set_column(SUG_ST_I,SUG_ST_I,30); ws.set_column(use_heads.index('Match Logic'),use_heads.index('Match Logic'),22)
         else:
             ws.set_column(10,10,18); ws.set_column(12,12,8); ws.set_column(13,16,11)
-            ws.set_column(DF_S,DF_E,12); ws.set_column(ST_I,ST_I,30); ws.set_column(ML_I,ML_I,22)
+            ws.set_column(DF_S,DF_E,12); ws.set_column(ST_I,ST_I,30); ws.set_column(use_heads.index('Match Logic'),use_heads.index('Match Logic'),22)
 
     writer.close()
     return output.getvalue()
