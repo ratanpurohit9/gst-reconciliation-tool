@@ -234,10 +234,18 @@ def save_run(path: str | Path, run_id: str, month: str, return_type: str,
             prev = db.execute("""SELECT MIN(first_seen) FROM run_lines
                 JOIN runs USING(run_id) WHERE row_id=? AND month<>?""", (row_id, month)).fetchone()[0]
             first_seen = prev or run_date
+            # A source workbook can contain repeated identity keys within one run.
+            # Keep a single current snapshot row for each stable (run_id, row_id) key.
             db.execute("""INSERT INTO run_lines
                 (run_id,row_id,side,gstin,inv_no,inv_date,taxable,igst,cgst,sgst,cess,
                  engine_status,final_status,match_method,first_seen,amount_then)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(run_id,row_id) DO UPDATE SET
+                    side=excluded.side, gstin=excluded.gstin, inv_no=excluded.inv_no,
+                    inv_date=excluded.inv_date, taxable=excluded.taxable, igst=excluded.igst,
+                    cgst=excluded.cgst, sgst=excluded.sgst, cess=excluded.cess,
+                    engine_status=excluded.engine_status, final_status=excluded.final_status,
+                    match_method=excluded.match_method, amount_then=excluded.amount_then""", (
                 run_id, row_id, row.get("side", ""), row.get("gstin"), row.get("inv_no"),
                 row.get("inv_date"), row.get("taxable"), row.get("igst"), row.get("cgst"),
                 row.get("sgst"), row.get("cess"), row.get("engine_status"),
