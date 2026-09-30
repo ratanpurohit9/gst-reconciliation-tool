@@ -412,8 +412,8 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
             note = row.get('Note Number' + suffix)
             if pd.isna(gstin) or pd.isna(note):
                 return ''
-            doc_keys = ('Doc Type_BOOKS', 'Note Type_GST', 'Doc Type_GST', 'Note Type_BOOKS')
-            doc = next((row.get(k) for k in doc_keys if row.get(k) is not None and not pd.isna(row.get(k))), '')
+            doc = next((row.get(k + suffix) for k in ('Doc Type', 'Note Type', 'Document Type')
+                        if row.get(k + suffix) is not None and not pd.isna(row.get(k + suffix))), '')
             return make_row_id(gstin, note, side, doc, fy)
 
         df_export['Books Row ID'] = [_memory_row_id(row, 'B') for _, row in df_sub.iterrows()]
