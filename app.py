@@ -3606,7 +3606,7 @@ elif st.session_state.app_stage == 'results':
                                         for v in imp_selected_vendors:
                                             try:
                                                 imp_gstin = str(imp_df[imp_df['Name of Party'] == v]['GSTIN'].iloc[0]) if 'GSTIN' in imp_df.columns else ''
-                                                imp_zip.writestr(f"GST_Notice_{v}.pdf", create_vendor_pdf(imp_df, v, imp_company, imp_gstin, lang=_global_lang).getvalue())
+                                                imp_zip.writestr(f"GST_Notice_{v}.pdf", create_vendor_pdf(imp_df, v, imp_company, imp_gstin, lang=st.session_state.get('wa_lang', 'en')).getvalue())
                                             except Exception as _pe: imp_errors.append(f"{v}: {_pe}")
                                     if imp_errors: st.warning("Some PDFs failed: " + "; ".join(imp_errors))
                                     st.download_button("⬇️ Download PDF Notices ZIP", data=imp_zip_buf.getvalue(),
