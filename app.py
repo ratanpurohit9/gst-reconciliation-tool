@@ -395,18 +395,84 @@ st.markdown("""
     .main .block-container { animation: gst-fadein 0.3s ease both !important; }
     html, body, [data-testid="stAppViewContainer"] { background-color: var(--bg) !important; }
 
-    /* ── SIDEBAR ── */
-    [data-testid="stSidebar"] > div:first-child { background: var(--navy) !important; border-right: none !important; }
-    [data-testid="stSidebar"] * { color: rgba(255,255,255,0.85) !important; }
+    /* ── MEMORY SIDEBAR ── */
+    [data-testid="stSidebar"] > div:first-child {
+        background: linear-gradient(180deg, #0D1B40 0%, #122650 100%) !important;
+        border-right: 1px solid rgba(255,255,255,.08) !important;
+    }
+    [data-testid="stSidebar"] * { color: rgba(255,255,255,.88) !important; }
+    [data-testid="stSidebar"] h3 {
+        color: #fff !important; font-size: 19px !important; font-weight: 800 !important;
+        letter-spacing: -.02em !important; margin: 2px 0 10px !important;
+    }
+    [data-testid="stSidebar"] label {
+        color: #DCE7FA !important; font-size: 12px !important; font-weight: 650 !important;
+    }
     [data-testid="stSidebar"] .stTextInput input {
-        background: rgba(255,255,255,0.07) !important; border: 1px solid rgba(255,255,255,0.12) !important;
-        border-radius: 8px !important; color: rgba(255,255,255,0.7) !important; font-size: 12px !important;
+        min-height: 40px !important; box-sizing: border-box !important;
+        background: #F8FAFC !important; border: 1px solid #CBD5E1 !important;
+        border-radius: 9px !important; color: #102044 !important;
+        -webkit-text-fill-color: #102044 !important; font-size: 13px !important;
+        padding: 8px 11px !important;
+    }
+    [data-testid="stSidebar"] .stTextInput input::placeholder { color: #64748B !important; }
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] {
+        margin-top: -4px !important; margin-bottom: 2px !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+        min-height: 62px !important; box-sizing: border-box !important;
+        padding: 8px 10px !important; border: 1px dashed #7188B4 !important;
+        border-radius: 11px !important; background: rgba(255,255,255,.07) !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] > div {
+        gap: 8px !important; padding: 0 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] small,
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] span {
+        color: #C5D2E8 !important; font-size: 11px !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {
+        min-height: 34px !important; padding: 4px 12px !important;
+        background: #E8F0FF !important; border: 1px solid #BDD0F4 !important;
+        border-radius: 8px !important; color: #102044 !important;
+        font-size: 12px !important; font-weight: 700 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button * {
+        color: #102044 !important; fill: #102044 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button:hover {
+        background: #fff !important; border-color: #fff !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stDownloadButton"] button {
+        min-height: 42px !important; padding: 8px 12px !important;
+        border-radius: 10px !important; font-size: 12px !important;
+        font-weight: 750 !important; transition: all .18s ease !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stDownloadButton"] button[kind="primary"] {
+        background: #3B82F6 !important; border: 1px solid #60A5FA !important;
+        color: #fff !important; box-shadow: 0 4px 12px rgba(37,99,235,.28) !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stDownloadButton"] button:not([kind="primary"]) {
+        background: rgba(255,255,255,.09) !important; border: 1px solid rgba(255,255,255,.24) !important;
+        color: #F8FAFC !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stDownloadButton"] button:disabled {
+        opacity: .55 !important; color: #E2E8F0 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stDownloadButton"] button:hover:not(:disabled) {
+        transform: translateY(-1px) !important; filter: brightness(1.08) !important;
+    }
+    [data-testid="stSidebar"] .stCaption,
+    [data-testid="stSidebar"] .stCaption p {
+        color: #AEBED8 !important; font-size: 11px !important; line-height: 1.5 !important;
     }
     [data-testid="stSidebar"] .stButton > button {
-        background: rgba(255,255,255,0.07) !important; border: 1px solid rgba(255,255,255,0.12) !important;
-        color: rgba(255,255,255,0.75) !important; border-radius: 50px !important; font-size: 12px !important;
+        background: rgba(255,255,255,.08) !important; border: 1px solid rgba(255,255,255,.18) !important;
+        color: #F8FAFC !important; border-radius: 10px !important; font-size: 12px !important;
     }
-    [data-testid="stSidebar"] .stButton > button:hover { background: rgba(37,99,235,0.25) !important; border-color: rgba(37,99,235,0.5) !important; }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background: rgba(59,130,246,.28) !important; border-color: rgba(147,197,253,.65) !important;
+    }
 
     /* ── METRIC CARDS — amber accent ── */
     div[data-testid="stMetric"] {
