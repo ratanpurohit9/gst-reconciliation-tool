@@ -228,6 +228,35 @@ def unresolved_rows(path: str | Path) -> list[dict[str, Any]]:
                 {"Matched", "Matched (manual)", "Accepted difference"}]
 
 
+def export_exceptions(path: str | Path) -> bytes:
+    """Create an editable exception workbook with a protected-looking gray ID column."""
+    import xlsxwriter
+    rows = unresolved_rows(path)
+    columns = ["Row ID", "GSTIN", "Invoice Number", "Invoice Date", "Taxable",
+               "Engine Status", "Decision", "Linked To", "Reason"]
+    output = io.BytesIO()
+    book = xlsxwriter.Workbook(output, {"in_memory": True})
+    sheet = book.add_worksheet("Exceptions")
+    header = book.add_format({"bold": True, "bg_color": "#DCE6F1", "border": 1})
+    grey = book.add_format({"bg_color": "#E7E6E6", "font_color": "#666666"})
+    for col, label in enumerate(columns):
+        sheet.write(0, col, label, header)
+    sheet.set_column(0, 0, 34, grey)
+    sheet.set_column(1, 8, 20)
+    for r, row in enumerate(rows, start=1):
+        values = [row.get("row_id"), row.get("gstin"), row.get("inv_no"), row.get("inv_date"),
+                  row.get("taxable"), row.get("engine_status"), "", "", ""]
+        for col, value in enumerate(values):
+            if value is not None:
+                sheet.write(r, col, value, grey if col == 0 else None)
+    sheet.freeze_panes(1, 1)
+    sheet.autofilter(0, 0, max(1, len(rows)), len(columns) - 1)
+    sheet.data_validation(1, 6, max(1, len(rows) + 100), 6,
+                          {"validate": "list", "source": ["Link", "Accept", "Action"]})
+    book.close()
+    return output.getvalue()
+
+
 def touch_updated(path: str | Path) -> None:
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with _connect(path) as db:

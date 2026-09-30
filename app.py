@@ -127,7 +127,7 @@ import tempfile
 import sqlite3
 import uuid
 from recon_memory import (create_memory, validate_memory, open_uploaded_memory,
-                          export_memory, memory_filename, result_to_run_lines, save_run)
+                          export_memory, memory_filename, result_to_run_lines, save_run, export_exceptions)
 
 # --- PRE-PROCESSORS ---
 from modules.pre_processor  import smart_read_b2ba, process_amendments
@@ -243,6 +243,12 @@ if _memory_ready:
             file_name=memory_filename(_memory_client, _memory_fy),
             mime="application/octet-stream", on_click=_clear_memory_dirty,
             type="primary", use_container_width=True,
+        )
+        st.sidebar.download_button(
+            "Download exceptions", data=export_exceptions(_memory_path),
+            file_name=memory_filename(_memory_client, _memory_fy).replace("_memory_", "_exceptions_").replace(".db", ".xlsx"),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
         )
         if st.session_state.get("memory_dirty", False):
             st.sidebar.error("Unsaved changes — download memory")

@@ -1,10 +1,11 @@
 import sqlite3
 import unittest
 from pathlib import Path
+from io import BytesIO
 
 from recon_memory import (
     assign_row_ids, create_memory, make_row_id, normalize_invoice_number,
-    open_uploaded_memory, export_memory, memory_filename, result_to_run_lines,
+    open_uploaded_memory, export_memory, export_exceptions, memory_filename, result_to_run_lines,
     save_run, validate_memory,
 )
 
@@ -27,6 +28,23 @@ class MemoryTests(unittest.TestCase):
         lines = result_to_run_lines(result, "2025-26")
         self.assertEqual([line["side"] for line in lines], ["B", "G"])
         self.assertNotEqual(lines[0]["row_id"], lines[1]["row_id"])
+
+    def test_exception_workbook_has_row_id_and_decision_dropdown(self):
+        from openpyxl import load_workbook
+        path = Path(__file__).parents[1] / "_test-exceptions.db"
+        try:
+            create_memory(path, "Client A", "2025-26")
+            save_run(path, "run-x", "April", "GSTR2B", [{
+                "row_id": "abc123", "side": "B", "gstin": "G1", "inv_no": "1",
+                "taxable": 100, "engine_status": "Invoices Not in GSTR-2B",
+            }], "2025-05-01")
+            wb = load_workbook(BytesIO(export_exceptions(path)))
+            ws = wb["Exceptions"]
+            self.assertEqual(ws.cell(1, 1).value, "Row ID")
+            self.assertEqual(ws.cell(2, 1).value, "abc123")
+            self.assertEqual(len(ws.data_validations.dataValidation), 1)
+        finally:
+            path.unlink(missing_ok=True)
 
     def test_row_id_is_stable_and_normalizes_invoice_punctuation(self):
         a = make_row_id("27AAAAA0000A1Z5", "INV/0458", "B", "INV", "2025-26")
