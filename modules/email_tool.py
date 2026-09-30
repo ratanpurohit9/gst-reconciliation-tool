@@ -425,7 +425,7 @@ def generate_targeted_notice(df, vendor_name, company_name, category='not_in_2b'
     if vendor_df.empty:
         return ""
 
-    today = pd.Timestamp.now().strftime('%d %b %Y')
+    today = pd.Timestamp.now().strftime('%d/%m/%Y')
     total_inv = len(vendor_df)
 
     # Value column depends on category
