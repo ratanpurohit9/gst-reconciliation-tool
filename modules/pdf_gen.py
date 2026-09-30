@@ -63,6 +63,9 @@ for _lang, _font_name, _paths in (
         if _reg(_font_name, _font_name + "-Bold", _paths[0], _bold_path):
             _FONT_FOR_LANG[_lang] = (_font_name, _font_name + "-Bold")
 
+# Keep a stable Latin-capable face for party names, invoice values, and English PDFs.
+_LATIN_BASE_FONT, _LATIN_BASE_FONT_BOLD = _BASE_FONT, _BASE_FONT_BOLD
+
 # ─── Palette ──────────────────────────────────────────────────────────────────
 DARK_NAVY   = colors.HexColor("#1F3864")
 MID_BLUE    = colors.HexColor("#2E75B6")
@@ -241,9 +244,20 @@ def S(name, **kwargs):
     return ParagraphStyle(name, **kw)
 
 
+def SL(name, **kwargs):
+    """Latin-capable counterpart for names and numeric data inside Indic notices."""
+    base = S(name, **kwargs)
+    bold_names = {"title", "bold", "tbl_hdr", "tbl_bold", "val_stat"}
+    return ParagraphStyle(
+        name + "Latin",
+        parent=base,
+        fontName=_LATIN_BASE_FONT_BOLD if name in bold_names else _LATIN_BASE_FONT,
+    )
+
+
 def _header_table(company_name, gstin, today, W, lang='en'):
-    left  = [[Paragraph(company_name.upper(), S("title"))],
-              [Paragraph(f"GSTIN: {gstin}", S("subtitle"))]]
+    left  = [[Paragraph(company_name.upper(), SL("title"))],
+              [Paragraph(f"GSTIN: {gstin}", SL("subtitle"))]]
     right = [[Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("title", "GST RECONCILIATION NOTICE"), S("title"))],
               [Paragraph(f"{PDF_TRANSLATIONS.get(lang, {}).get('date', 'Date')}: {today}", S("subtitle"))]]
 
@@ -268,8 +282,8 @@ def _header_table(company_name, gstin, today, W, lang='en'):
 def _to_box(vendor_name, vendor_gstin, W, lang='en'):
     rows = [[Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("to", "To,"), S("small"))],
              [Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("dept", "The Accounts / GST Department"), S("bold"))],
-             [Paragraph(vendor_name, ParagraphStyle("vn", fontName=_BASE_FONT_BOLD, fontSize=11, textColor=DARK_NAVY))],
-             [Paragraph(f"GSTIN: {vendor_gstin}", S("small"))]]
+             [Paragraph(vendor_name, ParagraphStyle("vn", fontName=_LATIN_BASE_FONT_BOLD, fontSize=11, textColor=DARK_NAVY))],
+             [Paragraph(f"GSTIN: {vendor_gstin}", SL("small"))]]
     t = Table(rows, colWidths=[W - 16])
     t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),BG_INFO),
                              ('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4),
@@ -284,7 +298,7 @@ def _summary_box(inv_count, tot_tax, tot_igst, tot_cgst, tot_sgst, status_counts
 
     # Row 1: 3 stat cells
     def stat_cell(lbl, val, vc=DARK_NAVY, cw=0):
-        t = Table([[Paragraph(lbl, S("lbl_stat"))],[Paragraph(val, ParagraphStyle("sv",fontName=_BASE_FONT_BOLD,fontSize=11,textColor=vc))]],
+        t = Table([[Paragraph(lbl, S("lbl_stat"))],[Paragraph(val, ParagraphStyle("sv",fontName=_LATIN_BASE_FONT_BOLD,fontSize=11,textColor=vc))]],
                   colWidths=[cw or (W/3 - 8)])
         t.setStyle(TableStyle([('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4),
                                 ('LEFTPADDING',(0,0),(-1,-1),6),('RIGHTPADDING',(0,0),(-1,-1),6)]))
@@ -388,9 +402,9 @@ def _invoice_table(rows_data, status, W, lang='en'):
             inv_g_val = str(r.get('inv_g', '—'))
             combined_inv = Table([
                 [Paragraph('📘 ' + inv_b_val,
-                           ParagraphStyle("ib",fontName=_BASE_FONT_BOLD,fontSize=8,textColor=colors.HexColor("#1A3C6E")))],
+                           ParagraphStyle("ib",fontName=_LATIN_BASE_FONT_BOLD,fontSize=8,textColor=colors.HexColor("#1A3C6E")))],
                 [Paragraph('📋 ' + inv_g_val,
-                           ParagraphStyle("ig",fontName=_BASE_FONT,fontSize=7.5,textColor=colors.HexColor("#B91C1C")))],
+                           ParagraphStyle("ig",fontName=_LATIN_BASE_FONT,fontSize=7.5,textColor=colors.HexColor("#B91C1C")))],
             ], colWidths=[86])
             combined_inv.setStyle(TableStyle([
                 ('TOPPADDING',(0,0),(-1,-1),1),('BOTTOMPADDING',(0,0),(-1,-1),1),
@@ -402,13 +416,13 @@ def _invoice_table(rows_data, status, W, lang='en'):
             if abs(diff_val) >= 0.5:
                 diff_mismatch = fc(diff_val, abs_val=True)
                 diff_mismatch_clr = ACCENT_RED
-            diff_style_m = ParagraphStyle("dfm",fontName=_BASE_FONT_BOLD,fontSize=8,textColor=diff_mismatch_clr,alignment=TA_RIGHT)
+            diff_style_m = ParagraphStyle("dfm",fontName=_LATIN_BASE_FONT_BOLD,fontSize=8,textColor=diff_mismatch_clr,alignment=TA_RIGHT)
             btax_m = ib+cb+sb; gtax_m = ig+cg+sg
-            row=[Paragraph(str(i+1),S("tbl_cell")),
+            row=[Paragraph(str(i+1),SL("tbl_cell")),
                  combined_inv,
-                 Paragraph(str(r.get('date','—')),S("tbl_cell")),
-                 Paragraph(fc(tb) if tb else "-",S("tbl_num")), Paragraph(fc(btax_m) if btax_m else "-",S("tbl_num")),
-                 Paragraph(fc(tg) if tg else "-",S("tbl_num")), Paragraph(fc(gtax_m) if gtax_m else "-",S("tbl_num")),
+                 Paragraph(str(r.get('date','—')),SL("tbl_cell")),
+                 Paragraph(fc(tb) if tb else "-",SL("tbl_num")), Paragraph(fc(btax_m) if btax_m else "-",SL("tbl_num")),
+                 Paragraph(fc(tg) if tg else "-",SL("tbl_num")), Paragraph(fc(gtax_m) if gtax_m else "-",SL("tbl_num")),
                  Paragraph(diff_mismatch, diff_style_m)]
         elif has_both:
             if tb == 0 and tg > 0:
@@ -419,18 +433,18 @@ def _invoice_table(rows_data, status, W, lang='en'):
                 diff_txt = "-"; diff_clr = ACCENT_GRN
             else:
                 diff_txt = fc(diff, abs_val=True); diff_clr = ACCENT_RED
-            diff_style = ParagraphStyle("df",fontName=_BASE_FONT_BOLD,fontSize=8,textColor=diff_clr,alignment=TA_RIGHT)
-            row=[Paragraph(str(i+1),S("tbl_cell")), Paragraph(str(r.get('inv_no','—')),S("tbl_cell")),
-                 Paragraph(str(r.get('date','—')),S("tbl_cell")),
-                 Paragraph(fc(tb) if tb else "-",S("tbl_num")), Paragraph(fc(btax) if btax else "-",S("tbl_num")),
-                 Paragraph(fc(tg) if tg else "-",S("tbl_num")), Paragraph(fc(gtax) if gtax else "-",S("tbl_num")),
+            diff_style = ParagraphStyle("df",fontName=_LATIN_BASE_FONT_BOLD,fontSize=8,textColor=diff_clr,alignment=TA_RIGHT)
+            row=[Paragraph(str(i+1),SL("tbl_cell")), Paragraph(str(r.get('inv_no','—')),SL("tbl_cell")),
+                 Paragraph(str(r.get('date','—')),SL("tbl_cell")),
+                 Paragraph(fc(tb) if tb else "-",SL("tbl_num")), Paragraph(fc(btax) if btax else "-",SL("tbl_num")),
+                 Paragraph(fc(tg) if tg else "-",SL("tbl_num")), Paragraph(fc(gtax) if gtax else "-",SL("tbl_num")),
                  Paragraph(diff_txt, diff_style)]
         else:
-            row=[Paragraph(str(i+1),S("tbl_cell")), Paragraph(str(r.get('inv_no','—')),S("tbl_cell")),
-                 Paragraph(str(r.get('date','—')),S("tbl_cell")),
-                 Paragraph(fc(tb),S("tbl_num")), Paragraph(fc(ib),S("tbl_num")),
-                 Paragraph(fc(cb),S("tbl_num")), Paragraph(fc(sb),S("tbl_num")),
-                 Paragraph(fc(tb+ib+cb+sb),S("tbl_bold"))]
+            row=[Paragraph(str(i+1),SL("tbl_cell")), Paragraph(str(r.get('inv_no','—')),SL("tbl_cell")),
+                 Paragraph(str(r.get('date','—')),SL("tbl_cell")),
+                 Paragraph(fc(tb),SL("tbl_num")), Paragraph(fc(ib),SL("tbl_num")),
+                 Paragraph(fc(cb),SL("tbl_num")), Paragraph(fc(sb),SL("tbl_num")),
+                 Paragraph(fc(tb+ib+cb+sb),SL("tbl_bold"))]
         tbl_data.append(row)
 
     # Total row
@@ -439,21 +453,21 @@ def _invoice_table(rows_data, status, W, lang='en'):
     if is_inv_mismatch:
         tot_row=[Paragraph("",S("tbl_hdr")),Paragraph(total_label,S("tbl_hdr")),
                  Paragraph("{} {}".format(len(rows_data), invoice_label),S("tbl_hdr")),
-                 Paragraph(fc(tot_taxable),S("tbl_bold")), Paragraph(fc(tot_igst+tot_cgst+tot_sgst),S("tbl_bold")),
-                 Paragraph(fc(tot_gtax),S("tbl_bold")), Paragraph(fc(tot_gigst+tot_gcgst+tot_gsgst),S("tbl_bold")),
+                 Paragraph(fc(tot_taxable),SL("tbl_bold")), Paragraph(fc(tot_igst+tot_cgst+tot_sgst),SL("tbl_bold")),
+                 Paragraph(fc(tot_gtax),SL("tbl_bold")), Paragraph(fc(tot_gigst+tot_gcgst+tot_gsgst),SL("tbl_bold")),
                  Paragraph("",S("tbl_hdr"))]
     elif has_both:
         tot_row=[Paragraph("",S("tbl_hdr")),Paragraph(total_label,S("tbl_hdr")),
                  Paragraph("{} {}".format(len(rows_data), invoice_label),S("tbl_hdr")),
-                 Paragraph(fc(tot_taxable),S("tbl_bold")), Paragraph(fc(tot_igst+tot_cgst+tot_sgst),S("tbl_bold")),
-                 Paragraph(fc(tot_gtax),S("tbl_bold")), Paragraph(fc(tot_gigst+tot_gcgst+tot_gsgst),S("tbl_bold")),
+                 Paragraph(fc(tot_taxable),SL("tbl_bold")), Paragraph(fc(tot_igst+tot_cgst+tot_sgst),SL("tbl_bold")),
+                 Paragraph(fc(tot_gtax),SL("tbl_bold")), Paragraph(fc(tot_gigst+tot_gcgst+tot_gsgst),SL("tbl_bold")),
                  Paragraph("",S("tbl_hdr"))]
     else:
         tot_row=[Paragraph("",S("tbl_hdr")),Paragraph("TOTAL",S("tbl_hdr")),
                  Paragraph(f"{len(rows_data)} inv.",S("tbl_hdr")),
-                 Paragraph(fc(tot_taxable),S("tbl_bold")), Paragraph(fc(tot_igst),S("tbl_bold")),
-                 Paragraph(fc(tot_cgst),S("tbl_bold")), Paragraph(fc(tot_sgst),S("tbl_bold")),
-                 Paragraph(fc(tot_taxable+tot_igst+tot_cgst+tot_sgst),S("tbl_bold"))]
+                 Paragraph(fc(tot_taxable),SL("tbl_bold")), Paragraph(fc(tot_igst),SL("tbl_bold")),
+                 Paragraph(fc(tot_cgst),SL("tbl_bold")), Paragraph(fc(tot_sgst),SL("tbl_bold")),
+                 Paragraph(fc(tot_taxable+tot_igst+tot_cgst+tot_sgst),SL("tbl_bold"))]
     tbl_data.append(tot_row)
 
     n=len(tbl_data)
@@ -521,8 +535,11 @@ def _section(status, rows_data, W, lang='en'):
 
 def create_vendor_pdf(df, vendor_name, company_name, gst_in_company, lang='en'):
     global _BASE_FONT, _BASE_FONT_BOLD
-    if lang in _FONT_FOR_LANG:
-        _BASE_FONT, _BASE_FONT_BOLD = _FONT_FOR_LANG[lang]
+    # Reset on every call: Gujarati/Hindi font selection must never leak into
+    # later English notices generated by the same Streamlit process.
+    _BASE_FONT, _BASE_FONT_BOLD = _FONT_FOR_LANG.get(
+        lang, (_LATIN_BASE_FONT, _LATIN_BASE_FONT_BOLD)
+    )
     buffer=io.BytesIO()
     doc=SimpleDocTemplate(buffer, pagesize=A4,
                            leftMargin=18*mm, rightMargin=18*mm,
@@ -628,8 +645,8 @@ def create_vendor_pdf(df, vendor_name, company_name, gst_in_company, lang='en'):
                [Spacer(1,28)],
                [Paragraph("_"*35,S("body"))],
                [Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("sign", "[Authorized Signatory]"),S("bold"))],
-               [Paragraph(company_name,S("bold"))],
-               [Paragraph(f"GSTIN: {gst_in_company}",S("small"))]]
+               [Paragraph(company_name,SL("bold"))],
+               [Paragraph(f"GSTIN: {gst_in_company}",SL("small"))]]
     sig=Table(sig_rows, colWidths=[W/2])
     sig.setStyle(TableStyle([('TOPPADDING',(0,0),(-1,-1),2),('BOTTOMPADDING',(0,0),(-1,-1),2),
                                ('LEFTPADDING',(0,0),(-1,-1),0),('RIGHTPADDING',(0,0),(-1,-1),0),
@@ -638,7 +655,7 @@ def create_vendor_pdf(df, vendor_name, company_name, gst_in_company, lang='en'):
 
     def footer(canvas, doc):
         canvas.saveState()
-        canvas.setFont(_BASE_FONT, 7)
+        canvas.setFont(_LATIN_BASE_FONT, 7)
         canvas.setFillColor(colors.HexColor("#888888"))
         canvas.drawCentredString(A4[0]/2, 10*mm,
             f"{company_name}  |  GSTIN: {gst_in_company}  |  Page {doc.page}  |  Generated: {today}")
