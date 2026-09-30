@@ -70,6 +70,9 @@ class MemoryTests(unittest.TestCase):
             save_run(path, "run-2", "April", "GSTR2B", lines, "2025-05-02")
             self.assertEqual(apply_decisions(path, "run-2")[book_id], "Needs review")
             self.assertEqual(apply_decisions(path, "run-2")[gst_id], "Needs review")
+            lines[0]["taxable"] = 100
+            save_run(path, "run-3", "April", "GSTR2B", [lines[0]], "2025-05-03")
+            self.assertEqual(apply_decisions(path, "run-3")[book_id], "Needs review")
         finally:
             path.unlink(missing_ok=True)
 

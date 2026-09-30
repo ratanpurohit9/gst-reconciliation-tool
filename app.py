@@ -127,7 +127,8 @@ import tempfile
 import sqlite3
 import uuid
 from recon_memory import (create_memory, validate_memory, open_uploaded_memory,
-                          export_memory, memory_filename, result_to_run_lines, save_run, export_exceptions, import_decisions)
+                          export_memory, memory_filename, result_to_run_lines, save_run, export_exceptions, import_decisions,
+                          apply_decisions, make_row_id)
 
 # --- PRE-PROCESSORS ---
 from modules.pre_processor  import smart_read_b2ba, process_amendments
@@ -2611,20 +2612,24 @@ elif st.session_state.app_stage == 'processing':
     st.session_state.current_client_path = get_client_path(meta['name'], meta['gstin'], meta['fy'], meta['period'])
     st.session_state['last_result'] = result
 
-    # Keep compact invoice-level run history in the user's memory file.
+    # Save each invoice side, then layer stored decisions over the engine verdict.
     if st.session_state.get("memory_ready"):
-        _memory_lines = result_to_run_lines(result, meta['fy'])
+        _memory_statuses = {}
+        _memory_run_ids = []
         if 'Recon_Period' in result.columns:
-            for _memory_period, _memory_frame in result.groupby('Recon_Period', dropna=False):
-                save_run(
-                    st.session_state['memory_path'], uuid.uuid4().hex, str(_memory_period),
-                    "GSTR2B", result_to_run_lines(_memory_frame, meta['fy'])
-                )
+            _snapshot_groups = result.groupby('Recon_Period', dropna=False)
         else:
+            _snapshot_groups = [(meta['period'], result)]
+        for _memory_period, _memory_frame in _snapshot_groups:
+            _memory_run_id = uuid.uuid4().hex
             save_run(
-                st.session_state['memory_path'], uuid.uuid4().hex, str(meta['period']),
-                "GSTR2B", _memory_lines
+                st.session_state['memory_path'], _memory_run_id, str(_memory_period),
+                "GSTR2B", result_to_run_lines(_memory_frame, meta['fy'])
             )
+            _memory_statuses.update(apply_decisions(st.session_state['memory_path'], _memory_run_id))
+            _memory_run_ids.append(_memory_run_id)
+        st.session_state['memory_final_statuses'] = _memory_statuses
+        st.session_state['memory_run_ids'] = _memory_run_ids
         st.session_state['memory_dirty'] = True
     log_action(recon_id, 'new_recon', {'invoices': len(result), 'tolerance': tol})
 
@@ -2678,6 +2683,21 @@ elif st.session_state.app_stage == 'results':
 
     # Safe display copy
     result_display = result.copy()
+    _memory_final_statuses = st.session_state.get("memory_final_statuses", {})
+    for _side_code, _suffix in (("B", "_BOOKS"), ("G", "_GST")):
+        def _memory_engine_status(row):
+            return row.get("Recon_Status", "")
+        def _memory_final_status(row, side=_side_code, suffix=_suffix):
+            _gstin = row.get("GSTIN" + suffix)
+            _invoice = row.get("Invoice Number" + suffix)
+            if pd.isna(_gstin) or pd.isna(_invoice):
+                return ""
+            _doc = next((row.get(k + suffix) for k in ("Document Type", "Invoice Type", "Doc Type")
+                         if row.get(k + suffix) is not None), "")
+            _row_id = make_row_id(_gstin, _invoice, side, _doc, fy)
+            return _memory_final_statuses.get(_row_id, row.get("Recon_Status", ""))
+        result_display[f"Engine_Status_{_side_code}"] = result_display.apply(_memory_engine_status, axis=1)
+        result_display[f"final_status_{_side_code}"] = result_display.apply(_memory_final_status, axis=1)
     if 'Invoice Date_BOOKS' in result_display.columns:
         result_display['Invoice Date_BOOKS'] = pd.to_datetime(
             result_display['Invoice Date_BOOKS'], dayfirst=True, errors='coerce'
