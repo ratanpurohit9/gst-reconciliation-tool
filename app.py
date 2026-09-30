@@ -2748,8 +2748,17 @@ elif st.session_state.app_stage == 'results':
             _cdnr_status = _cdnr_live.get("Recon_Status_CDNR", pd.Series(dtype=str)).astype(str)
             _cdnr_summary = dict(st.session_state.get("cdnr_summary") or {})
             _cdnr_summary["matched_count"] = int(_cdnr_status.str.contains("Matched", case=False, na=False).sum())
+            _cdnr_summary["tax_error_count"] = int((_cdnr_status == "CDNR Matched (Tax Error)").sum())
+            _cdnr_summary["mismatch_count"] = int(_cdnr_status.str.contains("Mismatch", na=False).sum())
+            _cdnr_summary["ai_matched_count"] = int(_cdnr_status.str.contains("Smart Matched", na=False).sum())
             _cdnr_summary["not_in_2b_count"] = int((_cdnr_status == "CDNR Not in GSTR-2B").sum())
             _cdnr_summary["not_in_books_count"] = int((_cdnr_status == "CDNR Not in Books").sum())
+            _cdnr_summary["not_in_2b_value"] = float(
+                _cdnr_live.loc[_cdnr_status == "CDNR Not in GSTR-2B", "Taxable Value_BOOKS"].fillna(0).sum()
+            ) if "Taxable Value_BOOKS" in _cdnr_live.columns else 0.0
+            _cdnr_summary["not_in_books_value"] = float(
+                _cdnr_live.loc[_cdnr_status == "CDNR Not in Books", "Taxable Value_GST"].fillna(0).sum()
+            ) if "Taxable Value_GST" in _cdnr_live.columns else 0.0
             st.session_state["cdnr_summary"] = _cdnr_summary
 
     st.markdown(f"""
