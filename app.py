@@ -3244,10 +3244,8 @@ elif st.session_state.app_stage == 'results':
                             _gstzen_applied += 1
                         if _gstzen_applied:
                             st.session_state["combined_report_bytes"] = None
-                            st.session_state["hub_names_done"] = False
-                            st.session_state["hub_gstzen_sync_result"] = (
-                                _gstzen_applied, len(_gstzen_names), len(_gstzen_seen_gstins)
-                            )
+                            _remaining_gstins = [g for g in _unknown_in_hub if g not in _gstzen_names]
+                            st.session_state["hub_names_done"] = not _remaining_gstins
                             st.rerun()
                         else:
                             st.warning(
@@ -3256,13 +3254,6 @@ elif st.session_state.app_stage == 'results':
                             )
                 except Exception as _gstzen_err:
                     st.error(f"Could not read GSTZen result file: {_gstzen_err}")
-
-            _gstzen_sync_result = st.session_state.pop("hub_gstzen_sync_result", None)
-            if _gstzen_sync_result:
-                st.success(
-                    f"Applied names for {_gstzen_sync_result[0]} GSTIN(s). "
-                    f"Read {_gstzen_sync_result[1]} named GSTIN(s) from the lookup file."
-                )
             _edited_names = st.data_editor(
                 _name_tbl,
                 column_config={
