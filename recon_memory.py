@@ -448,6 +448,66 @@ def apply_decisions(path: str | Path, run_id: str) -> dict[str, str]:
     return final
 
 
+
+def apply_memory_final_statuses(frame, financial_year: str, statuses: Mapping[str, str],
+                                return_type: str = "GSTR2B"):
+    """Apply saved decisions to an in-memory result frame for reports and notice filters."""
+    out = frame.copy()
+    is_cdnr = str(return_type).upper() == "CDNR"
+    status_col = "Recon_Status_CDNR" if is_cdnr and "Recon_Status_CDNR" in out.columns else "Recon_Status"
+    if status_col not in out.columns:
+        return out
+    original_col = "_Engine_Status_Original"
+    if original_col not in out.columns:
+        out[original_col] = out[status_col]
+
+    def outcome(row):
+        found = []
+        for side, suffix in (("B", "_BOOKS"), ("G", "_GST")):
+            gstin = row.get("GSTIN" + suffix)
+            invoice_col = ("Note Number" if is_cdnr else "Invoice Number") + suffix
+            invoice = row.get(invoice_col)
+            if _is_missing(gstin) or _is_missing(invoice):
+                continue
+            if is_cdnr:
+                doc = next((row.get(k + suffix) for k in ("Doc Type", "Note Type", "Document Type")
+                            if row.get(k + suffix) is not None and not _is_missing(row.get(k + suffix))), "")
+            else:
+                doc = next((row.get(k + suffix) for k in ("Document Type", "Invoice Type", "Doc Type")
+                            if row.get(k + suffix) is not None and not _is_missing(row.get(k + suffix))), "")
+            row_id = make_row_id(gstin, invoice, side, doc, financial_year)
+            value = statuses.get(row_id)
+            if value:
+                found.append(value)
+        priority = {"Matched (manual)": 3, "Accepted difference": 2, "Needs review": 1}
+        return max(found, key=lambda value: priority.get(value, 0)) if found else None
+
+    applied = out.apply(outcome, axis=1)
+    for idx, final_status in applied.items():
+        if final_status == "Matched (manual)":
+            out.at[idx, status_col] = final_status
+            if "Match_Confidence" in out.columns:
+                out.at[idx, "Match_Confidence"] = 100.0
+            if "Match_Logic" in out.columns:
+                out.at[idx, "Match_Logic"] = "Memory Link"
+            if "Match_Reason" in out.columns:
+                out.at[idx, "Match_Reason"] = "Manually linked from the uploaded reconciliation report."
+        elif final_status == "Accepted difference":
+            out.at[idx, status_col] = final_status
+            if "Match_Reason" in out.columns:
+                out.at[idx, "Match_Reason"] = "Difference accepted from the uploaded reconciliation report."
+        elif final_status == "Needs review":
+            out.at[idx, status_col] = final_status
+            if "Match_Confidence" in out.columns:
+                out.at[idx, "Match_Confidence"] = 0.0
+            if "Match_Logic" in out.columns:
+                out.at[idx, "Match_Logic"] = "Needs review"
+            if "Match_Reason" in out.columns:
+                out.at[idx, "Match_Reason"] = "Marked for action from the uploaded reconciliation report."
+    return out
+
+
+
 def open_items(path: str | Path, gstin: str = "", min_age_days: int = 0) -> list[dict[str, Any]]:
     """Return the latest snapshot for each month/return, oldest unresolved first."""
     with _connect(path) as db:
