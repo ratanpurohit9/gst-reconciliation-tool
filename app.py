@@ -252,36 +252,51 @@ if _memory_ready:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
-        _decision_upload = st.sidebar.file_uploader(
-            "Upload edited B2B/CDNR report", type=["xlsx"], key="memory_decision_upload",
-            help="Upload the edited reconciliation report. Choose only Link, Accept, or Action in Memory Decision."
-        )
-        if _decision_upload is not None:
-            _decision_bytes = _decision_upload.getvalue()
-            _decision_hash = hashlib.sha256(_decision_bytes).hexdigest()
-            if _decision_hash != st.session_state.get("memory_decision_upload_hash"):
+        st.sidebar.caption("Edit Memory Decision in a downloaded report, then upload that report here. Allowed choices: Link, Accept, Action.")
+        _report_uploads = [
+            ("B2B", st.sidebar.file_uploader(
+                "Upload edited B2B report", type=["xlsx"], key="memory_b2b_report_upload"
+            )),
+            ("CDNR", st.sidebar.file_uploader(
+                "Upload edited CDNR report", type=["xlsx"], key="memory_cdnr_report_upload"
+            )),
+        ]
+        for _report_kind, _report_upload in _report_uploads:
+            if _report_upload is None:
+                continue
+            _report_bytes = _report_upload.getvalue()
+            _report_hash = hashlib.sha256(_report_bytes).hexdigest()
+            _hash_key = f"memory_{_report_kind.casefold()}_report_hash"
+            _error_key = f"memory_{_report_kind.casefold()}_report_error"
+            if _report_hash != st.session_state.get(_hash_key):
                 try:
-                    _decision_result = import_decisions(_memory_path, _decision_bytes)
-                    st.session_state["memory_decision_upload_hash"] = _decision_hash
-                    st.session_state["memory_decision_import_result"] = _decision_result
-                    if _decision_result["saved"]:
+                    _report_result = import_decisions(_memory_path, _report_bytes)
+                    st.session_state[_hash_key] = _report_hash
+                    st.session_state.pop(_error_key, None)
+                    st.session_state[f"memory_{_report_kind.casefold()}_report_result"] = _report_result
+                    if _report_result["saved"]:
                         _refreshed_statuses = {}
                         for _run_id in st.session_state.get("memory_run_ids", []):
                             _refreshed_statuses.update(apply_decisions(_memory_path, _run_id))
                         st.session_state["memory_final_statuses"] = _refreshed_statuses
                         st.session_state["memory_dirty"] = True
-                except (ValueError, OSError, sqlite3.Error) as _decision_err:
-                    st.sidebar.error(f"Could not import decisions: {_decision_err}")
-        _decision_result = st.session_state.get("memory_decision_import_result")
-        if _decision_result:
-            st.sidebar.success(
-                f"{_decision_result['saved']} saved, {len(_decision_result['unrecognized'])} not recognised"
-            )
-            if _decision_result["unrecognized"]:
-                st.sidebar.dataframe(
-                    pd.DataFrame(_decision_result["unrecognized"]),
-                    use_container_width=True, hide_index=True
+                except (ValueError, OSError, sqlite3.Error) as _report_err:
+                    st.session_state[_hash_key] = _report_hash
+                    st.session_state[_error_key] = str(_report_err)
+            _saved_result = st.session_state.get(f"memory_{_report_kind.casefold()}_report_result")
+            _saved_error = st.session_state.get(_error_key)
+            if _saved_error:
+                st.sidebar.error(f"{_report_kind} upload rejected: {_saved_error}")
+            elif _saved_result:
+                st.sidebar.success(
+                    f"{_report_kind}: {_saved_result['saved']} saved, "
+                    f"{len(_saved_result['unrecognized'])} not recognised"
                 )
+                if _saved_result["unrecognized"]:
+                    st.sidebar.dataframe(
+                        pd.DataFrame(_saved_result["unrecognized"]),
+                        use_container_width=True, hide_index=True
+                    )
         with st.sidebar.expander("Open items", expanded=False):
             _open_gstin = st.text_input("Filter GSTIN", key="memory_open_gstin")
             _open_age = st.number_input("Minimum age (days)", min_value=0, value=0, step=30, key="memory_open_age")
