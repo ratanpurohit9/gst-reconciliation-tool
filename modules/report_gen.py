@@ -541,6 +541,8 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
             cols=sug_display_cols; heads=sug_headers
         else:
             cols=display_cols; heads=headers
+        # Add export-only columns without mutating the shared header templates.
+        heads = list(heads)
         for c in cols:
             if c not in df_sub.columns: df_sub[c]=np.nan
         df_export=df_sub[cols].copy(); df_export.columns=heads
