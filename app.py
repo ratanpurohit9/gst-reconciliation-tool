@@ -128,7 +128,8 @@ import sqlite3
 import uuid
 from recon_memory import (create_memory, validate_memory, open_uploaded_memory,
                           export_memory, memory_filename, result_to_run_lines, save_run, export_exceptions, import_decisions,
-                          apply_decisions, make_row_id, open_items, search_invoice)
+                          apply_decisions, apply_memory_final_statuses, cdnr_result_to_run_lines,
+                          make_row_id, open_items, search_invoice)
 
 # --- PRE-PROCESSORS ---
 from modules.pre_processor  import smart_read_b2ba, process_amendments
@@ -252,7 +253,8 @@ if _memory_ready:
             use_container_width=True,
         )
         _decision_upload = st.sidebar.file_uploader(
-            "Upload decisions", type=["xlsx"], key="memory_decision_upload"
+            "Upload edited B2B/CDNR report", type=["xlsx"], key="memory_decision_upload",
+            help="Upload the edited reconciliation report. Choose only Link, Accept, or Action in Memory Decision."
         )
         if _decision_upload is not None:
             _decision_bytes = _decision_upload.getvalue()
@@ -263,6 +265,10 @@ if _memory_ready:
                     st.session_state["memory_decision_upload_hash"] = _decision_hash
                     st.session_state["memory_decision_import_result"] = _decision_result
                     if _decision_result["saved"]:
+                        _refreshed_statuses = {}
+                        for _run_id in st.session_state.get("memory_run_ids", []):
+                            _refreshed_statuses.update(apply_decisions(_memory_path, _run_id))
+                        st.session_state["memory_final_statuses"] = _refreshed_statuses
                         st.session_state["memory_dirty"] = True
                 except (ValueError, OSError, sqlite3.Error) as _decision_err:
                     st.sidebar.error(f"Could not import decisions: {_decision_err}")
@@ -2653,6 +2659,24 @@ elif st.session_state.app_stage == 'processing':
         st.session_state['memory_final_statuses'] = _memory_statuses
         st.session_state['memory_run_ids'] = _memory_run_ids
         st.session_state['memory_dirty'] = True
+    # Keep the CDNR rows in the same portable memory so report re-uploads can
+    # resolve their hidden row IDs and apply decisions to notices and summaries.
+    _memory_cdnr_result = st.session_state.get("cdnr_result")
+    if st.session_state.get("memory_ready") and _memory_cdnr_result is not None and not _memory_cdnr_result.empty:
+        _cdnr_groups = (_memory_cdnr_result.groupby("Recon_Period", dropna=False)
+                        if "Recon_Period" in _memory_cdnr_result.columns
+                        else [(meta["period"], _memory_cdnr_result)])
+        for _cdnr_period, _cdnr_frame in _cdnr_groups:
+            _cdnr_run_id = uuid.uuid4().hex
+            save_run(
+                st.session_state["memory_path"], _cdnr_run_id, str(_cdnr_period), "CDNR",
+                cdnr_result_to_run_lines(_cdnr_frame, meta["fy"])
+            )
+            _memory_statuses.update(apply_decisions(st.session_state["memory_path"], _cdnr_run_id))
+            _memory_run_ids.append(_cdnr_run_id)
+        st.session_state["memory_final_statuses"] = _memory_statuses
+        st.session_state["memory_run_ids"] = _memory_run_ids
+        st.session_state["memory_dirty"] = True
     log_action(recon_id, 'new_recon', {'invoices': len(result), 'tolerance': tol})
 
     # Run CDNR automatically from the same uploaded files. This is fail-soft:
@@ -2696,6 +2720,23 @@ elif st.session_state.app_stage == 'results':
     fy     = st.session_state['meta_fy']
     period = st.session_state['meta_period']
 
+    # Reapply accepted upload decisions to the live results before scorecards,
+    # notices, and new report downloads are built.
+    _memory_current_statuses = st.session_state.get("memory_final_statuses", {})
+    if _memory_current_statuses:
+        result = apply_memory_final_statuses(result, fy, _memory_current_statuses, "GSTR2B")
+        st.session_state["last_result"] = result
+        _cdnr_live = st.session_state.get("cdnr_result")
+        if _cdnr_live is not None and not _cdnr_live.empty:
+            _cdnr_live = apply_memory_final_statuses(_cdnr_live, fy, _memory_current_statuses, "CDNR")
+            st.session_state["cdnr_result"] = _cdnr_live
+            _cdnr_status = _cdnr_live.get("Recon_Status_CDNR", pd.Series(dtype=str)).astype(str)
+            _cdnr_summary = dict(st.session_state.get("cdnr_summary") or {})
+            _cdnr_summary["matched_count"] = int(_cdnr_status.str.contains("Matched", case=False, na=False).sum())
+            _cdnr_summary["not_in_2b_count"] = int((_cdnr_status == "CDNR Not in GSTR-2B").sum())
+            _cdnr_summary["not_in_books_count"] = int((_cdnr_status == "CDNR Not in Books").sum())
+            st.session_state["cdnr_summary"] = _cdnr_summary
+
     st.markdown(f"""
     <div style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:14px 18px;margin-bottom:10px">
       <div style="font-size:11px;font-weight:800;color:#64748B;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Party Name</div>
@@ -2708,7 +2749,7 @@ elif st.session_state.app_stage == 'results':
     _memory_final_statuses = st.session_state.get("memory_final_statuses", {})
     for _side_code, _suffix in (("B", "_BOOKS"), ("G", "_GST")):
         def _memory_engine_status(row):
-            return row.get("Recon_Status", "")
+            return row.get("_Engine_Status_Original", row.get("Recon_Status", ""))
         def _memory_final_status(row, side=_side_code, suffix=_suffix):
             _gstin = row.get("GSTIN" + suffix)
             _invoice = row.get("Invoice Number" + suffix)
