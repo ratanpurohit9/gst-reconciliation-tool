@@ -1588,7 +1588,7 @@ if False:
 # ==========================================
 # HEADER
 # ==========================================
-if not st.session_state.get('show_dashboard', True) and st.session_state.get('app_stage') not in ('setup', 'results'):
+if not st.session_state.get('show_dashboard', True) and st.session_state.get('app_stage') not in ('setup', 'results', 'module4'):
     st.markdown("""
     <div class="app-header-banner">
         <div style="display:flex;align-items:center;gap:14px;">
@@ -1698,7 +1698,19 @@ if st.session_state.get('show_dashboard', True):
         st.session_state['show_dashboard'] = False
         st.session_state['app_stage'] = 'setup'
         st.rerun()
+    elif _clicked == "MODULE 04":
+        st.session_state['show_dashboard'] = False
+        st.session_state['app_stage'] = 'module4'
+        st.session_state.pop('module4_results', None)
+        st.rerun()
     st.stop()   # ← everything below only runs when dashboard is hidden
+
+# Module 04 is an isolated workspace that calls the existing reconciliation
+# engines. It exits before the Module 02 setup, processing, and results flow.
+if st.session_state.get('app_stage') == 'module4':
+    from modules.module4 import render_module4
+    render_module4()
+    st.stop()
 
 # ==========================================
 # GSTR-2B MULTI-FILE MERGER (TOP CORNER)
@@ -2014,13 +2026,13 @@ def _prepare_gstr2b_upload(uploaded_files):
 
 
 # ── MERGER UI — top right corner via columns ─────────────────────────────────
-if st.session_state.get('app_stage') not in ('setup', 'results'):
+if st.session_state.get('app_stage') not in ('setup', 'results', 'module4'):
     _merger_col, _merger_btn_col = st.columns([5, 1])
     with _merger_btn_col:
         if st.button("🔀 Merge 2B Files", help="Merge multiple GSTR-2B files into one", use_container_width=True):
             st.session_state['show_merger'] = not st.session_state.get('show_merger', False)
 
-if st.session_state.get('app_stage') not in ('setup', 'results') and st.session_state.get('show_merger', False):
+if st.session_state.get('app_stage') not in ('setup', 'results', 'module4') and st.session_state.get('show_merger', False):
     with st.container():
         st.markdown("""
         <div style='background: linear-gradient(135deg, #1a237e, #1565c0); color:white;
