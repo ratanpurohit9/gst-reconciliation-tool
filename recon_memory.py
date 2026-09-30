@@ -297,16 +297,27 @@ def import_decisions(path: str | Path, workbook_bytes: bytes) -> dict[str, Any]:
     """
     import pandas as pd
     try:
-        sheets = pd.read_excel(io.BytesIO(workbook_bytes), sheet_name=None, dtype=object)
+        workbook = pd.ExcelFile(io.BytesIO(workbook_bytes))
+        sheets = {}
+        for sheet_name in workbook.sheet_names:
+            frame = pd.read_excel(workbook, sheet_name=sheet_name, dtype=object)
+            normalized = {re.sub(r"[^a-z0-9]", "", str(col).casefold()): col for col in frame.columns}
+            has_decision = any(k in normalized for k in ("decision", "memorydecision", "userdecision", "statusdecision"))
+            header_row = 1
+            if not has_decision:
+                # B2B/CDNR reports place column headings on Excel row 7 after metadata.
+                frame = pd.read_excel(workbook, sheet_name=sheet_name, header=6, dtype=object)
+                normalized = {re.sub(r"[^a-z0-9]", "", str(col).casefold()): col for col in frame.columns}
+                header_row = 7
+            sheets[sheet_name] = (frame, normalized, header_row)
     except Exception as exc:
         raise ValueError(f"Could not read decision workbook: {exc}") from exc
     frames = []
-    for sheet_name, frame in sheets.items():
-        normalized = {re.sub(r"[^a-z0-9]", "", str(col).casefold()): col for col in frame.columns}
+    for sheet_name, (frame, normalized, header_row) in sheets.items():
         decision_col = next((normalized[k] for k in ("decision", "memorydecision", "userdecision", "statusdecision")
                              if k in normalized), None)
         if decision_col is not None:
-            frames.append((sheet_name, frame, normalized, decision_col))
+            frames.append((sheet_name, frame, normalized, decision_col, header_row))
     if not frames:
         raise ValueError("Workbook must include a Memory Decision column on a report data sheet")
 
@@ -319,11 +330,11 @@ def import_decisions(path: str | Path, workbook_bytes: bytes) -> dict[str, Any]:
         return "" if _is_missing(value) else str(value).strip()
 
     bad_values = []
-    for sheet_name, frame, normalized, decision_col in frames:
+    for sheet_name, frame, normalized, decision_col, header_row in frames:
         for idx, row in frame.iterrows():
             raw = cell(row, decision_col)
             if raw and raw.casefold() not in allowed:
-                bad_values.append({"sheet": sheet_name, "row": int(idx) + 2, "value": raw})
+                bad_values.append({"sheet": sheet_name, "row": int(idx) + header_row + 1, "value": raw})
     if bad_values:
         examples = "; ".join(
             f"{item['sheet']} row {item['row']}: {item['value']!r}" for item in bad_values[:8]
@@ -342,7 +353,7 @@ def import_decisions(path: str | Path, workbook_bytes: bytes) -> dict[str, Any]:
             known.setdefault(row["row_id"], dict(row))
         saved, unrecognized = 0, []
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        for sheet_name, frame, normalized, decision_col in frames:
+        for sheet_name, frame, normalized, decision_col, header_row in frames:
             generic_id_col = normalized.get("rowid")
             books_id_col = next((normalized[k] for k in ("memorybooksrowid", "booksrowid", "rowidbooks")
                                  if k in normalized), None)
@@ -361,7 +372,7 @@ def import_decisions(path: str | Path, workbook_bytes: bytes) -> dict[str, Any]:
                 row_id = cell(row, generic_id_col) or (books_id if books_id in known else gst_id)
                 reason = cell(row, reason_col)
                 if not row_id or row_id not in known:
-                    unrecognized.append({"sheet": sheet_name, "row": int(idx) + 2, "row_id": row_id,
+                    unrecognized.append({"sheet": sheet_name, "row": int(idx) + header_row + 1, "row_id": row_id,
                                          "reason": "Row ID missing or not found in this memory"})
                     continue
 
@@ -382,7 +393,7 @@ def import_decisions(path: str | Path, workbook_bytes: bytes) -> dict[str, Any]:
                             linked_id = candidates[0]
                     if (not linked_id or linked_id == row_id or linked_id not in known
                             or known[linked_id]["side"] == known[row_id]["side"]):
-                        unrecognized.append({"sheet": sheet_name, "row": int(idx) + 2, "row_id": row_id,
+                        unrecognized.append({"sheet": sheet_name, "row": int(idx) + header_row + 1, "row_id": row_id,
                                              "reason": "Linked To did not identify one opposite-side invoice"})
                         continue
 
