@@ -361,7 +361,7 @@ def _invoice_table(rows_data, status, W, lang='en'):
     else:
         # 8 cols: Sr | InvNo | Date | Taxable | IGST | CGST | SGST | Total
         # Total must fit ₹12,99,168.50 = 14 chars at 8pt DejaVu ≈ 68pt minimum
-        headers = [PDF_TRANSLATIONS[lang]["table"][i] for i in [0,8,2,9,10,11,12,13]] if lang in PDF_TRANSLATIONS else ["Sr.","Inv No.","Date","Taxable","IGST","CGST","SGST","Total"]
+        headers = [PDF_TRANSLATIONS[lang]["table"][i] for i in [0,8,2,9,11,12,13,10]] if lang in PDF_TRANSLATIONS else ["Sr.","Inv No.","Date","Taxable","IGST","CGST","SGST","Total"]
         cw_list = [16, 52, 46, 76, 56, 56, 56, 80]
 
     scale = (W - 2) / sum(cw_list)
@@ -434,15 +434,17 @@ def _invoice_table(rows_data, status, W, lang='en'):
         tbl_data.append(row)
 
     # Total row
+    total_label = PDF_TRANSLATIONS[lang]["table"][14] if lang in PDF_TRANSLATIONS else "TOTAL"
+    invoice_label = PDF_TRANSLATIONS[lang]["table"][15] if lang in PDF_TRANSLATIONS else "inv."
     if is_inv_mismatch:
-        tot_row=[Paragraph("",S("tbl_hdr")),Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("table", [])[13] if lang in PDF_TRANSLATIONS else "TOTAL",S("tbl_hdr")),
-                 Paragraph(f"{len(rows_data)} {PDF_TRANSLATIONS.get(lang, {}).get("table", [])[14] if lang in PDF_TRANSLATIONS else "inv."}",S("tbl_hdr")),
+        tot_row=[Paragraph("",S("tbl_hdr")),Paragraph(total_label,S("tbl_hdr")),
+                 Paragraph("{} {}".format(len(rows_data), invoice_label),S("tbl_hdr")),
                  Paragraph(fc(tot_taxable),S("tbl_bold")), Paragraph(fc(tot_igst+tot_cgst+tot_sgst),S("tbl_bold")),
                  Paragraph(fc(tot_gtax),S("tbl_bold")), Paragraph(fc(tot_gigst+tot_gcgst+tot_gsgst),S("tbl_bold")),
                  Paragraph("",S("tbl_hdr"))]
     elif has_both:
-        tot_row=[Paragraph("",S("tbl_hdr")),Paragraph("TOTAL",S("tbl_hdr")),
-                 Paragraph(f"{len(rows_data)} inv.",S("tbl_hdr")),
+        tot_row=[Paragraph("",S("tbl_hdr")),Paragraph(total_label,S("tbl_hdr")),
+                 Paragraph("{} {}".format(len(rows_data), invoice_label),S("tbl_hdr")),
                  Paragraph(fc(tot_taxable),S("tbl_bold")), Paragraph(fc(tot_igst+tot_cgst+tot_sgst),S("tbl_bold")),
                  Paragraph(fc(tot_gtax),S("tbl_bold")), Paragraph(fc(tot_gigst+tot_gcgst+tot_gsgst),S("tbl_bold")),
                  Paragraph("",S("tbl_hdr"))]
