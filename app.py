@@ -3107,7 +3107,8 @@ elif st.session_state.app_stage == 'results':
             _name_tbl = pd.DataFrame({
                 'GSTIN': _unknown_in_hub,
                 'Source': [' + '.join(sorted(_unknown_sources.get(_g, []))) for _g in _unknown_in_hub],
-                'Party Name': [st.session_state.get(f'cdnr_name_{_g}', '') for _g in _unknown_in_hub]
+                'Party Name': [st.session_state.get(f'cdnr_name_{_g}', '') for _g in _unknown_in_hub],
+                'GST Portal': ['https://services.gst.gov.in/services/searchtp'] * len(_unknown_in_hub),
             })
             _gst_copy_text = "\n".join(_unknown_in_hub)
             _hub_name_editor_key = f"hub_name_editor_{hashlib.md5(_gst_copy_text.encode('utf-8')).hexdigest()[:8]}"
@@ -3128,6 +3129,10 @@ elif st.session_state.app_stage == 'results':
             </script>
             """, height=40)
             st.code(_gst_copy_text, language=None)
+            st.caption(
+                "For each GSTIN, open its GST Portal link, enter the GSTIN and solve the CAPTCHA. "
+                "Then type the returned trade or legal name in the Party Name column."
+            )
 
             _edited_names = st.data_editor(
                 _name_tbl,
@@ -3135,6 +3140,9 @@ elif st.session_state.app_stage == 'results':
                     'GSTIN':      st.column_config.TextColumn('GSTIN',      disabled=True,  width='medium'),
                     'Source':     st.column_config.TextColumn('Source',     disabled=True,  width='small'),
                     'Party Name': st.column_config.TextColumn('Party Name', disabled=False, width='large'),
+                    'GST Portal': st.column_config.LinkColumn(
+                        'GST Portal', display_text='Open lookup ↗', disabled=True, width='small'
+                    ),
                 },
                 hide_index=True,
                 use_container_width=True,
