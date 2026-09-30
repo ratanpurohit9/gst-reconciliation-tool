@@ -3606,7 +3606,7 @@ elif st.session_state.app_stage == 'results':
                                         for v in imp_selected_vendors:
                                             try:
                                                 imp_gstin = str(imp_df[imp_df['Name of Party'] == v]['GSTIN'].iloc[0]) if 'GSTIN' in imp_df.columns else ''
-                                                imp_zip.writestr(f"GST_Notice_{v}.pdf", create_vendor_pdf(imp_df, v, imp_company, imp_gstin).getvalue())
+                                                imp_zip.writestr(f"GST_Notice_{v}.pdf", create_vendor_pdf(imp_df, v, imp_company, imp_gstin, lang=_global_lang).getvalue())
                                             except Exception as _pe: imp_errors.append(f"{v}: {_pe}")
                                     if imp_errors: st.warning("Some PDFs failed: " + "; ".join(imp_errors))
                                     st.download_button("⬇️ Download PDF Notices ZIP", data=imp_zip_buf.getvalue(),
@@ -3726,7 +3726,7 @@ elif st.session_state.app_stage == 'results':
                     display:flex;align-items:center;gap:10px;margin-bottom:12px">
           <span style="font-size:16px">🌐</span>
           <span style="font-size:12px;font-weight:700;color:var(--amber-dk)">
-            Choose notice language — applies to WhatsApp messages and bulk .txt export
+            Choose notice language — applies to PDF notices, WhatsApp messages, and bulk .txt export
           </span>
         </div>
         """, unsafe_allow_html=True)
@@ -3791,7 +3791,7 @@ elif st.session_state.app_stage == 'results':
                         _z2b = io.BytesIO()
                         with zipfile.ZipFile(_z2b, "a", zipfile.ZIP_DEFLATED, False) as _zf:
                             for _v in _sel_2b:
-                                _pdf = create_vendor_pdf(notice_result[notice_result['Recon_Status'] == 'Invoices Not in GSTR-2B'], _v, name, gstin)
+                                _pdf = create_vendor_pdf(notice_result[notice_result['Recon_Status'] == 'Invoices Not in GSTR-2B'], _v, name, gstin, lang=_global_lang)
                                 _zf.writestr(f"NotIn2B_Notice_{_v}.pdf", _pdf.getvalue())
                         st.download_button("⬇️ Download ZIP", data=_z2b.getvalue(),
                                            file_name=f"NotIn2B_Notices_{period}.zip",
@@ -3840,7 +3840,7 @@ elif st.session_state.app_stage == 'results':
                         _znb = io.BytesIO()
                         with zipfile.ZipFile(_znb, "a", zipfile.ZIP_DEFLATED, False) as _zf:
                             for _v in _sel_nb:
-                                _pdf = create_vendor_pdf(notice_result[notice_result['Recon_Status'] == 'Invoices Not in Purchase Books'], _v, name, gstin)
+                                _pdf = create_vendor_pdf(notice_result[notice_result['Recon_Status'] == 'Invoices Not in Purchase Books'], _v, name, gstin, lang=_global_lang)
                                 _zf.writestr(f"NotInBooks_Notice_{_v}.pdf", _pdf.getvalue())
                         st.download_button("⬇️ Download ZIP", data=_znb.getvalue(),
                                            file_name=f"NotInBooks_Notices_{period}.zip",
@@ -3899,7 +3899,7 @@ elif st.session_state.app_stage == 'results':
                 zip_buffer_pdf = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer_pdf, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
                     for v in selected_vendors_bulk:
-                        pdf_data = create_vendor_pdf(notice_result, v, name, gstin)
+                        pdf_data = create_vendor_pdf(notice_result, v, name, gstin, lang=_global_lang)
                         zip_file.writestr(f"GST_Notice_{v}.pdf", pdf_data.getvalue())
                 filtered_df    = notice_result[notice_result['Name of Party'].isin(selected_vendors_bulk)]
                 zip_buffer_xls = generate_vendor_split_zip(filtered_df)
@@ -4001,7 +4001,7 @@ elif st.session_state.app_stage == 'results':
                         """, unsafe_allow_html=True)
 
                 elif comm_mode == "📄 Preview PDF":
-                    pdf_data = create_vendor_pdf(notice_result, selected_vendor, name, gstin)
+                    pdf_data = create_vendor_pdf(notice_result, selected_vendor, name, gstin, lang=_global_lang)
                     st.download_button(f"⬇️ Download Notice PDF — {selected_vendor}", data=pdf_data.getvalue(),
                                        file_name=f"GST_Notice_{selected_vendor}.pdf", mime="application/pdf",
                                        type="primary", use_container_width=True, key="single_pdf_dl")
