@@ -3128,6 +3128,141 @@ elif st.session_state.app_stage == 'results':
             </script>
             """, height=40)
             st.code(_gst_copy_text, language=None)
+
+            # Bulk party-name lookup using GSTZen's free bulk GSTIN tool.
+            st.markdown("#### Bulk name lookup with GSTZen")
+            st.caption(
+                "Download this GSTIN list, upload it to GSTZen, then upload GSTZen's "
+                "result file here. Matching Trade Name (or Legal Name) values will fill "
+                "the missing names below."
+            )
+            _gstzen_template = io.BytesIO()
+            with pd.ExcelWriter(_gstzen_template, engine="xlsxwriter") as _writer:
+                pd.DataFrame({"GSTIN": _unknown_in_hub}).to_excel(
+                    _writer, index=False, sheet_name="GSTIN List"
+                )
+            _gstzen_c1, _gstzen_c2 = st.columns([1, 2])
+            with _gstzen_c1:
+                st.download_button(
+                    "Download GSTIN list for GSTZen",
+                    data=_gstzen_template.getvalue(),
+                    file_name="GSTIN_Bulk_Lookup.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="hub_gstzen_gstin_download",
+                )
+            with _gstzen_c2:
+                st.link_button(
+                    "Open GSTZen Free Bulk Lookup",
+                    "https://my.gstzen.in/p/gstin-validator/home/free/",
+                    use_container_width=True,
+                )
+            _gstzen_result_file = st.file_uploader(
+                "Upload the result file downloaded from GSTZen",
+                type=["xlsx", "csv"],
+                key="hub_gstzen_result_upload",
+                help="Upload GSTZen's bulk lookup result in Excel or CSV format.",
+            )
+            _gstzen_apply = st.button(
+                "Apply GSTZen names to missing parties",
+                type="secondary",
+                disabled=_gstzen_result_file is None,
+                key="hub_gstzen_apply",
+            )
+            if _gstzen_apply and _gstzen_result_file is not None:
+                try:
+                    _gstzen_bytes = _gstzen_result_file.getvalue()
+                    if _gstzen_result_file.name.lower().endswith(".csv"):
+                        _gstzen_frames = [pd.read_csv(io.BytesIO(_gstzen_bytes), dtype=object)]
+                    else:
+                        _gstzen_book = pd.ExcelFile(io.BytesIO(_gstzen_bytes))
+                        _gstzen_frames = [
+                            pd.read_excel(_gstzen_book, sheet_name=_sheet, dtype=object)
+                            for _sheet in _gstzen_book.sheet_names
+                        ]
+
+                    def _gstzen_norm_col(_value):
+                        return re.sub(r"[^a-z0-9]", "", str(_value).casefold())
+
+                    _gstzen_names = {}
+                    _gstzen_seen_gstins = set()
+                    _gstzen_gstin_aliases = {
+                        "gstin", "gstinnumber", "gstinuin", "gstregistrationnumber",
+                        "gstidentificationnumber",
+                    }
+                    _gstzen_name_aliases = {
+                        "tradename", "businessname", "nameofbusiness",
+                        "legalname", "legalnameofbusiness", "name",
+                    }
+                    for _frame in _gstzen_frames:
+                        _cols = {_gstzen_norm_col(_c): _c for _c in _frame.columns}
+                        _gstin_col = next(
+                            (_cols[_alias] for _alias in _gstzen_gstin_aliases if _alias in _cols),
+                            None,
+                        )
+                        _name_col = next(
+                            (_cols[_alias] for _alias in (
+                                "tradename", "businessname", "nameofbusiness",
+                                "legalname", "legalnameofbusiness", "name",
+                            ) if _alias in _cols),
+                            None,
+                        )
+                        if _gstin_col is None or _name_col is None:
+                            continue
+                        for _, _lookup_row in _frame.iterrows():
+                            _lookup_gstin = str(_lookup_row.get(_gstin_col, "")).strip().upper()
+                            _lookup_name = str(_lookup_row.get(_name_col, "")).strip()
+                            if (_lookup_gstin and _lookup_gstin.lower() not in ("nan", "none")
+                                    and _lookup_name and _lookup_name.lower() not in ("nan", "none")):
+                                _gstzen_seen_gstins.add(_lookup_gstin)
+                                _gstzen_names[_lookup_gstin] = _lookup_name
+
+                    if not _gstzen_names:
+                        st.error(
+                            "Could not find GSTIN and Trade Name/Legal Name columns in that file. "
+                            "Please upload GSTZen's downloaded result workbook or CSV."
+                        )
+                    else:
+                        _gstzen_applied = 0
+                        for _lookup_gstin, _lookup_name in _gstzen_names.items():
+                            if _lookup_gstin not in _unknown_sources:
+                                continue
+                            st.session_state[f"cdnr_name_{_lookup_gstin}"] = _lookup_name
+                            for _df_key in ("last_result", "cdnr_result"):
+                                _lookup_df = st.session_state.get(_df_key)
+                                if (_lookup_df is None or "GSTIN" not in _lookup_df.columns
+                                        or "Name of Party" not in _lookup_df.columns):
+                                    continue
+                                _gstin_mask = _lookup_df["GSTIN"].astype(str).str.strip().str.upper().eq(_lookup_gstin)
+                                _current_names = _lookup_df["Name of Party"].astype(str).str.strip().str.casefold()
+                                _missing_mask = _lookup_df["Name of Party"].isna() | _current_names.isin(
+                                    ("", "unknown", "nan", "none")
+                                )
+                                _fill_mask = _gstin_mask & _missing_mask
+                                if _fill_mask.any():
+                                    _lookup_df.loc[_fill_mask, "Name of Party"] = _lookup_name
+                                    st.session_state[_df_key] = _lookup_df
+                            _gstzen_applied += 1
+                        if _gstzen_applied:
+                            st.session_state["combined_report_bytes"] = None
+                            st.session_state["hub_names_done"] = False
+                            st.session_state["hub_gstzen_sync_result"] = (
+                                _gstzen_applied, len(_gstzen_names), len(_gstzen_seen_gstins)
+                            )
+                            st.rerun()
+                        else:
+                            st.warning(
+                                f"Read {len(_gstzen_names)} GSTIN name(s), but none matched the "
+                                "currently missing GSTINs in this report."
+                            )
+                except Exception as _gstzen_err:
+                    st.error(f"Could not read GSTZen result file: {_gstzen_err}")
+
+            _gstzen_sync_result = st.session_state.pop("hub_gstzen_sync_result", None)
+            if _gstzen_sync_result:
+                st.success(
+                    f"Applied names for {_gstzen_sync_result[0]} GSTIN(s). "
+                    f"Read {_gstzen_sync_result[1]} named GSTIN(s) from the lookup file."
+                )
             _edited_names = st.data_editor(
                 _name_tbl,
                 column_config={
