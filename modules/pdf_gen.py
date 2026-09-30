@@ -254,10 +254,10 @@ def _translated_para(text, style):
     if (_BASE_FONT, _BASE_FONT_BOLD) not in indic_fonts:
         return Paragraph(text, style)
     safe_tags = {"<br/>", "<b>", "</b>"}
-    parts = _re.split(r"(<br\\s*/>|<b>|</b>)", text)
+    parts = _re.split(r"(<br\s*/>|<b>|</b>)", text)
     rendered = []
     for part in parts:
-        if part in safe_tags or _re.fullmatch(r"<br\\s*/>", part or ""):
+        if part in safe_tags or _re.fullmatch(r"<br\s*/>", part or ""):
             rendered.append("<br/>" if part != "<b>" and part != "</b>" else part)
             continue
         escaped = _html_escape(part)
