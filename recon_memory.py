@@ -324,7 +324,8 @@ def import_decisions(path: str | Path, workbook_bytes: bytes) -> dict[str, Any]:
                     amount_then=excluded.amount_then,reason=excluded.reason,decided_on=excluded.decided_on""",
                     (target_id, target_decision, target_link, target.get("taxable"), reason, now))
             saved += 1
-        db.execute("UPDATE meta SET value=? WHERE key='last_updated'", (now,))
+        if saved:
+            db.execute("UPDATE meta SET value=? WHERE key='last_updated'", (now,))
     return {"saved": saved, "unrecognized": unrecognized}
 
 

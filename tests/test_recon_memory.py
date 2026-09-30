@@ -94,6 +94,27 @@ class MemoryTests(unittest.TestCase):
         finally:
             path.unlink(missing_ok=True)
 
+    def test_empty_decision_cells_are_ignored(self):
+        from openpyxl import Workbook
+        path = Path(__file__).parents[1] / "_test-empty-decisions.db"
+        try:
+            create_memory(path, "Client A", "2025-26")
+            db = sqlite3.connect(path)
+            before = db.execute("SELECT value FROM meta WHERE key='last_updated'").fetchone()[0]
+            db.close()
+            wb = Workbook(); ws = wb.active
+            ws.append(["Row ID", "Decision", "Linked To", "Reason"])
+            ws.append([None, None, None, None])
+            stream = BytesIO(); wb.save(stream)
+            result = import_decisions(path, stream.getvalue())
+            self.assertEqual(result, {"saved": 0, "unrecognized": []})
+            db = sqlite3.connect(path)
+            after = db.execute("SELECT value FROM meta WHERE key='last_updated'").fetchone()[0]
+            db.close()
+            self.assertEqual(before, after)
+        finally:
+            path.unlink(missing_ok=True)
+
     def test_row_id_is_stable_and_normalizes_invoice_punctuation(self):
         a = make_row_id("27AAAAA0000A1Z5", "INV/0458", "B", "INV", "2025-26")
         b = make_row_id("27aaaaa0000a1z5", "inv-0458", "B", "INV", "2025-26")
