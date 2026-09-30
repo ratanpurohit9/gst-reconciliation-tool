@@ -176,6 +176,38 @@ def result_to_run_lines(result, financial_year: str) -> list[dict[str, Any]]:
     return lines
 
 
+
+def cdnr_result_to_run_lines(result, financial_year: str) -> list[dict[str, Any]]:
+    """Convert CDNR output into the same portable row-ID format used by its report."""
+    lines: list[dict[str, Any]] = []
+    for _, row in result.iterrows():
+        engine_status = row.get("Recon_Status_CDNR", row.get("Recon_Status", ""))
+        for side, suffix in (("B", "_BOOKS"), ("G", "_GST")):
+            gstin = row.get("GSTIN" + suffix)
+            note = row.get("Note Number" + suffix)
+            if gstin is None or note is None or _is_missing(gstin) or _is_missing(note):
+                continue
+            doc = next((row.get(k + suffix) for k in ("Doc Type", "Note Type", "Document Type")
+                        if row.get(k + suffix) is not None and not _is_missing(row.get(k + suffix))), "")
+            def value(name):
+                v = row.get(name + suffix)
+                return None if _is_missing(v) else v
+            note_date = value("Note Date")
+            if hasattr(note_date, "isoformat"):
+                note_date = note_date.isoformat()
+            taxable = value("Taxable Value")
+            lines.append({
+                "row_id": make_row_id(gstin, note, side, doc, financial_year),
+                "side": side, "gstin": str(gstin), "inv_no": str(note),
+                "inv_date": str(note_date) if note_date is not None else None,
+                "taxable": taxable, "igst": value("IGST"), "cgst": value("CGST"),
+                "sgst": value("SGST"), "cess": value("Cess"),
+                "engine_status": str(engine_status), "final_status": str(engine_status),
+                "match_method": str(row.get("Match_Logic", "")), "amount_then": taxable,
+            })
+    return lines
+
+
 def _is_missing(value: Any) -> bool:
     if value is None:
         return True
