@@ -489,7 +489,7 @@ def _section(status, rows_data, W, lang='en'):
 
     badge_data=[[Paragraph(f"  [{cfg['icon']}]  {cfg['label']}",
                             ParagraphStyle("bh",fontName=_BASE_FONT_BOLD,fontSize=9,textColor=WHITE)),
-                  Paragraph(f"{len(rows_data)} Invoice(s)",
+                  Paragraph("{} {}".format(len(rows_data), PDF_TRANSLATIONS[lang]["table"][15] if lang in PDF_TRANSLATIONS else "Invoice(s)"),
                              ParagraphStyle("bc",fontName=_BASE_FONT_BOLD,fontSize=8,textColor=WHITE,alignment=TA_RIGHT))]]
     badge=Table(badge_data, colWidths=[W*0.75, W*0.25])
     badge.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),cfg["color"]),
