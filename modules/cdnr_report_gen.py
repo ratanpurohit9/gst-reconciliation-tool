@@ -402,6 +402,8 @@ def generate_cdnr_excel(full_df, company_gstin, company_name, fy, period,
             df_s2,df_e2=DF_S,DF_E; st_i=ST_I
             d_bk=DATE_BK; d_gt=DATE_GT
             sug_note=None; banner_label=f'CDNR Report :: {sheet_name}'
+        # Add export-only columns without mutating the shared header templates.
+        use_heads = list(use_heads)
         for c in use_cols:
             if c not in df_sub.columns: df_sub[c]=np.nan
         df_export=df_sub[use_cols].copy(); df_export.columns=use_heads
