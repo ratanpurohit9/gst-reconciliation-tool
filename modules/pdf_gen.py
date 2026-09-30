@@ -48,6 +48,21 @@ if not _BASE_FONT:
     _BASE_FONT, _BASE_FONT_BOLD = 'Helvetica', 'Helvetica-Bold'
     _CURRENCY_PREFIX = "Rs."
 
+# Indic fonts installed by packages.txt on Streamlit/Linux deployments.
+_NOTO_DEV = ("/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
+             "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf")
+_NOTO_GUJ = ("/usr/share/fonts/truetype/noto/NotoSansGujarati-Regular.ttf",
+             "/usr/share/fonts/truetype/noto/NotoSansGujarati-Bold.ttf")
+_FONT_FOR_LANG = {}
+for _lang, _font_name, _paths in (
+    ("hi", "NotoDevanagari", _NOTO_DEV),
+    ("gu", "NotoGujarati", _NOTO_GUJ),
+):
+    if _os.path.exists(_paths[0]):
+        _bold_path = _paths[1] if _os.path.exists(_paths[1]) else _paths[0]
+        if _reg(_font_name, _font_name + "-Bold", _paths[0], _bold_path):
+            _FONT_FOR_LANG[_lang] = (_font_name, _font_name + "-Bold")
+
 # ─── Palette ──────────────────────────────────────────────────────────────────
 DARK_NAVY   = colors.HexColor("#1F3864")
 MID_BLUE    = colors.HexColor("#2E75B6")
@@ -495,6 +510,9 @@ def _section(status, rows_data, W, lang='en'):
 
 
 def create_vendor_pdf(df, vendor_name, company_name, gst_in_company, lang='en'):
+    global _BASE_FONT, _BASE_FONT_BOLD
+    if lang in _FONT_FOR_LANG:
+        _BASE_FONT, _BASE_FONT_BOLD = _FONT_FOR_LANG[lang]
     buffer=io.BytesIO()
     doc=SimpleDocTemplate(buffer, pagesize=A4,
                            leftMargin=18*mm, rightMargin=18*mm,
