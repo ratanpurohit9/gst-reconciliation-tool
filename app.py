@@ -3263,22 +3263,26 @@ elif st.session_state.app_stage == 'results':
             _cdnr_bytes = None
             _b2b_bytes  = None
             _itc_bytes  = None
+            _report_errors = {}
 
             if _cdnr_rdy:
                 try:
                     _cdnr_bytes = generate_cdnr_excel(_cdnr_r, gstin, name, fy, period, b2b_full_df=result)
-                except Exception:
+                except Exception as _e:
                     _cdnr_bytes = None
+                    _report_errors["CDNR Reconciliation"] = f"{type(_e).__name__}: {_e}"
 
             try:
                 _b2b_bytes = generate_excel(result, gstin, name, fy, period)
-            except Exception:
+            except Exception as _e:
                 _b2b_bytes = None
+                _report_errors["B2B Reconciliation"] = f"{type(_e).__name__}: {_e}"
 
             try:
                 _itc_bytes = create_itc_risk_pdf(result, name, gstin, period, fy).getvalue()
-            except Exception:
+            except Exception as _e:
                 _itc_bytes = None
+                _report_errors["ITC Risk Summary"] = f"{type(_e).__name__}: {_e}"
 
             # Auto-generate Combined
             if _both_done and not _comb_rdy:
@@ -3291,6 +3295,13 @@ elif st.session_state.app_stage == 'results':
                         st.warning(f"Could not build combined report: {_ae}")
 
             _comb_bytes = st.session_state.get('combined_report_bytes')
+
+            if _report_errors:
+                with st.expander("⚠️ Why one or more reports are Not Ready", expanded=True):
+                    st.caption("The vendor names were saved, but these report files failed during generation:")
+                    for _report_title, _report_error in _report_errors.items():
+                        st.markdown(f"**{_report_title}**")
+                        st.code(_report_error)
 
             _XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             _reports = [
