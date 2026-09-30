@@ -253,13 +253,21 @@ def _translated_para(text, style):
     indic_fonts = set(_FONT_FOR_LANG.values())
     if (_BASE_FONT, _BASE_FONT_BOLD) not in indic_fonts:
         return Paragraph(text, style)
-    escaped = _html_escape(text)
-    escaped = _re.sub(
-        r"[A-Za-z0-9]+(?:[./()+-][A-Za-z0-9]+)*",
-        lambda match: f'<font name="{_LATIN_BASE_FONT}">{match.group(0)}</font>',
-        escaped,
-    )
-    return Paragraph(escaped, style)
+    safe_tags = {"<br/>", "<b>", "</b>"}
+    parts = _re.split(r"(<br\\s*/>|<b>|</b>)", text)
+    rendered = []
+    for part in parts:
+        if part in safe_tags or _re.fullmatch(r"<br\\s*/>", part or ""):
+            rendered.append("<br/>" if part != "<b>" and part != "</b>" else part)
+            continue
+        escaped = _html_escape(part)
+        escaped = _re.sub(
+            r"[A-Za-z0-9]+(?:[./()+-][A-Za-z0-9]+)*",
+            lambda match: f'<font name="{_LATIN_BASE_FONT}">{match.group(0)}</font>',
+            escaped,
+        )
+        rendered.append(escaped)
+    return Paragraph("".join(rendered), style)
 
 
 def SL(name, **kwargs):
