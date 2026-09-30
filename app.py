@@ -123,6 +123,14 @@ from modules.db_handler     import (init_db, save_reconciliation, get_history_li
                                     get_all_clients_itc_summary, compare_two_recons)
 from modules.file_manager   import get_client_path, save_file_to_folder, open_folder
 
+import tempfile
+import sqlite3
+import uuid
+from recon_memory import (create_memory, validate_memory, open_uploaded_memory,
+                          export_memory, memory_filename, result_to_run_lines, save_run, export_exceptions, import_decisions,
+                          apply_decisions, apply_memory_final_statuses, cdnr_result_to_run_lines,
+                          make_row_id, open_items, search_invoice)
+
 # --- PRE-PROCESSORS ---
 from modules.pre_processor  import smart_read_b2ba, process_amendments
 
@@ -142,8 +150,185 @@ st.set_page_config(
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
+
 )
 init_db()
+
+# ── User-held reconciliation memory (per-session temporary copy) ─────────
+def _clear_memory_dirty():
+    st.session_state["memory_dirty"] = False
+
+if not st.session_state.get("memory_client") and st.session_state.get("meta_name"):
+    st.session_state["memory_client"] = st.session_state["meta_name"]
+if not st.session_state.get("memory_fy") and st.session_state.get("meta_fy"):
+    st.session_state["memory_fy"] = st.session_state["meta_fy"]
+
+st.sidebar.markdown("### Memory")
+_memory_client = st.sidebar.text_input(
+    "Memory client", value=st.session_state.get("meta_name", ""), key="memory_client"
+).strip()
+_memory_fy = st.sidebar.text_input(
+    "Memory financial year", value=st.session_state.get("meta_fy", ""), key="memory_fy"
+).strip()
+_memory_upload = st.sidebar.file_uploader(
+    "Upload memory file", type=["db"], key="memory_file_upload"
+)
+_memory_identity = (_memory_client.casefold(), _memory_fy.casefold())
+_memory_path = st.session_state.get("memory_path")
+_memory_active_identity = st.session_state.get("memory_identity")
+_memory_upload_error = None
+
+if _memory_upload is not None and _memory_client and _memory_fy:
+    _memory_bytes = _memory_upload.getvalue()
+    _memory_hash = hashlib.sha256(_memory_bytes).hexdigest()
+    if _memory_hash != st.session_state.get("memory_upload_hash"):
+        try:
+            _new_memory_path = open_uploaded_memory(_memory_bytes, _memory_client, _memory_fy)
+            st.session_state["memory_path"] = _new_memory_path
+            st.session_state["memory_identity"] = _memory_identity
+            st.session_state["memory_upload_hash"] = _memory_hash
+            st.session_state["memory_dirty"] = False
+            st.session_state.pop("memory_error", None)
+            _memory_path = _new_memory_path
+            _memory_active_identity = _memory_identity
+        except (ValueError, sqlite3.Error, OSError) as _memory_err:
+            st.session_state["memory_upload_hash"] = _memory_hash
+            st.session_state["memory_error"] = str(_memory_err)
+            _memory_upload_error = str(_memory_err)
+
+_memory_upload_error = _memory_upload_error or st.session_state.get("memory_error")
+_memory_mismatch = bool(_memory_path and _memory_active_identity != _memory_identity)
+if _memory_client and _memory_fy and not _memory_path and not _memory_upload_error:
+    _memory_handle = tempfile.NamedTemporaryFile(prefix="gst-memory-session-", suffix=".db", delete=False)
+    _memory_handle.close()
+    create_memory(_memory_handle.name, _memory_client, _memory_fy)
+    st.session_state["memory_path"] = _memory_handle.name
+    st.session_state["memory_identity"] = _memory_identity
+    st.session_state["memory_dirty"] = False
+    _memory_path = _memory_handle.name
+    _memory_active_identity = _memory_identity
+    _memory_mismatch = False
+
+if _memory_upload_error or _memory_mismatch:
+    if _memory_upload_error:
+        st.sidebar.error(f"Memory file not loaded: {_memory_upload_error}")
+    else:
+        st.sidebar.warning("This memory belongs to a different client or financial year.")
+    _start_fresh = st.sidebar.checkbox(
+        "Start a fresh memory for this client and FY", key="memory_start_fresh"
+    )
+    if _start_fresh and _memory_client and _memory_fy and st.session_state.get("memory_fresh_identity") != _memory_identity:
+        _memory_handle = tempfile.NamedTemporaryFile(prefix="gst-memory-session-", suffix=".db", delete=False)
+        _memory_handle.close()
+        create_memory(_memory_handle.name, _memory_client, _memory_fy)
+        st.session_state["memory_path"] = _memory_handle.name
+        st.session_state["memory_identity"] = _memory_identity
+        st.session_state["memory_fresh_identity"] = _memory_identity
+        st.session_state["memory_dirty"] = False
+        st.session_state.pop("memory_error", None)
+        _memory_path = _memory_handle.name
+        _memory_active_identity = _memory_identity
+        _memory_upload_error = None
+        _memory_mismatch = False
+
+_memory_ready = bool(
+    _memory_path and _memory_active_identity == _memory_identity and
+    _memory_client and _memory_fy and not _memory_upload_error
+)
+st.session_state["memory_ready"] = _memory_ready
+if _memory_ready:
+    try:
+        _memory_meta = validate_memory(_memory_path, _memory_client, _memory_fy)
+        st.sidebar.caption(f"Last updated: {_memory_meta.get('last_updated', 'unknown')}")
+        st.sidebar.download_button(
+            "Download updated memory", data=export_memory(_memory_path),
+            file_name=memory_filename(_memory_client, _memory_fy),
+            mime="application/octet-stream", on_click=_clear_memory_dirty,
+            type="primary", use_container_width=True,
+        )
+        st.sidebar.download_button(
+            "Download exceptions", data=export_exceptions(_memory_path),
+            file_name=memory_filename(_memory_client, _memory_fy).replace("_memory_", "_exceptions_").replace(".db", ".xlsx"),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+        st.sidebar.caption("Edit Memory Decision in a downloaded report, then upload that report here. Allowed choices: Link, Accept, Action.")
+        _report_uploads = [
+            ("B2B", st.sidebar.file_uploader(
+                "Upload edited B2B report", type=["xlsx"], key="memory_b2b_report_upload"
+            )),
+            ("CDNR", st.sidebar.file_uploader(
+                "Upload edited CDNR report", type=["xlsx"], key="memory_cdnr_report_upload"
+            )),
+        ]
+        for _report_kind, _report_upload in _report_uploads:
+            if _report_upload is None:
+                continue
+            _report_bytes = _report_upload.getvalue()
+            _report_hash = hashlib.sha256(_report_bytes).hexdigest()
+            _hash_key = f"memory_{_report_kind.casefold()}_report_hash"
+            _error_key = f"memory_{_report_kind.casefold()}_report_error"
+            if _report_hash != st.session_state.get(_hash_key):
+                try:
+                    _report_result = import_decisions(_memory_path, _report_bytes)
+                    st.session_state[_hash_key] = _report_hash
+                    st.session_state.pop(_error_key, None)
+                    st.session_state[f"memory_{_report_kind.casefold()}_report_result"] = _report_result
+                    if _report_result["saved"]:
+                        _refreshed_statuses = {}
+                        for _run_id in st.session_state.get("memory_run_ids", []):
+                            _refreshed_statuses.update(apply_decisions(_memory_path, _run_id))
+                        st.session_state["memory_final_statuses"] = _refreshed_statuses
+                        st.session_state["memory_dirty"] = True
+                        st.session_state["combined_report_bytes"] = None
+                        for _preview_key in ("preview_2b_msg", "preview_nb_msg", "imp_wa_preview"):
+                            st.session_state.pop(_preview_key, None)
+                except (ValueError, OSError, sqlite3.Error) as _report_err:
+                    st.session_state[_hash_key] = _report_hash
+                    st.session_state[_error_key] = str(_report_err)
+            _saved_result = st.session_state.get(f"memory_{_report_kind.casefold()}_report_result")
+            _saved_error = st.session_state.get(_error_key)
+            if _saved_error:
+                st.sidebar.error(f"{_report_kind} upload rejected: {_saved_error}")
+            elif _saved_result:
+                st.sidebar.success(
+                    f"{_report_kind}: {_saved_result['saved']} saved, "
+                    f"{len(_saved_result['unrecognized'])} not recognised"
+                )
+                if _saved_result["unrecognized"]:
+                    st.sidebar.dataframe(
+                        pd.DataFrame(_saved_result["unrecognized"]),
+                        use_container_width=True, hide_index=True
+                    )
+        with st.sidebar.expander("Open items", expanded=False):
+            _open_gstin = st.text_input("Filter GSTIN", key="memory_open_gstin")
+            _open_age = st.number_input("Minimum age (days)", min_value=0, value=0, step=30, key="memory_open_age")
+            _open_rows = open_items(_memory_path, _open_gstin, _open_age)
+            st.caption(f"{len(_open_rows)} unresolved invoice row(s), oldest first")
+            if _open_rows:
+                _open_cols = ["first_seen", "age_days", "month", "side", "gstin", "inv_no",
+                              "inv_date", "taxable", "engine_status", "final_status", "row_id"]
+                st.dataframe(pd.DataFrame(_open_rows)[_open_cols], use_container_width=True, hide_index=True)
+            _invoice_query = st.text_input(
+                "Search invoice, GSTIN or amount", key="memory_invoice_search"
+            )
+            if _invoice_query:
+                _history_rows = search_invoice(_memory_path, _invoice_query)
+                st.caption(f"{len(_history_rows)} matching month record(s)")
+                if _history_rows:
+                    _history_cols = ["month", "return_type", "side", "gstin", "inv_no", "inv_date",
+                                     "taxable", "engine_status", "final_status"]
+                    st.dataframe(pd.DataFrame(_history_rows)[_history_cols],
+                                 use_container_width=True, hide_index=True)
+                else:
+                    st.info("No matching invoice found in memory.")
+        if st.session_state.get("memory_dirty", False):
+            st.sidebar.error("Unsaved changes — download memory")
+    except (ValueError, sqlite3.Error, OSError) as _memory_err:
+        st.sidebar.error(f"Memory unavailable: {_memory_err}")
+        st.session_state["memory_ready"] = False
+elif not (_memory_upload_error or _memory_mismatch):
+    st.sidebar.caption("Choose a client and financial year to create or open memory.")
 
 st.markdown("""
     <style>
@@ -2374,6 +2559,11 @@ if st.session_state.app_stage == 'setup':
 # STAGE 2 — PROCESSING
 # ==========================================
 elif st.session_state.app_stage == 'processing':
+    _expected_memory_identity = (str(st.session_state.get('meta_name', '')).casefold(), str(st.session_state.get('meta_fy', '')).casefold())
+    if not st.session_state.get('memory_ready') or st.session_state.get('memory_identity') != _expected_memory_identity:
+        st.error('Select a matching client and financial year in the sidebar Memory section before running reconciliation.')
+        st.session_state.app_stage = 'setup'
+        st.stop()
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align:center;color:#444;'>🤖 The Reconciliation Engine is processing your data...</h3>", unsafe_allow_html=True)
     show_processing_animation()
@@ -2467,6 +2657,26 @@ elif st.session_state.app_stage == 'processing':
     st.session_state.current_recon_id   = recon_id
     st.session_state.current_client_path = get_client_path(meta['name'], meta['gstin'], meta['fy'], meta['period'])
     st.session_state['last_result'] = result
+
+    # Save each invoice side, then layer stored decisions over the engine verdict.
+    if st.session_state.get("memory_ready"):
+        _memory_statuses = {}
+        _memory_run_ids = []
+        if 'Recon_Period' in result.columns:
+            _snapshot_groups = result.groupby('Recon_Period', dropna=False)
+        else:
+            _snapshot_groups = [(meta['period'], result)]
+        for _memory_period, _memory_frame in _snapshot_groups:
+            _memory_run_id = uuid.uuid4().hex
+            save_run(
+                st.session_state['memory_path'], _memory_run_id, str(_memory_period),
+                "GSTR2B", result_to_run_lines(_memory_frame, meta['fy'])
+            )
+            _memory_statuses.update(apply_decisions(st.session_state['memory_path'], _memory_run_id))
+            _memory_run_ids.append(_memory_run_id)
+        st.session_state['memory_final_statuses'] = _memory_statuses
+        st.session_state['memory_run_ids'] = _memory_run_ids
+        st.session_state['memory_dirty'] = True
     log_action(recon_id, 'new_recon', {'invoices': len(result), 'tolerance': tol})
 
     # Run CDNR automatically from the same uploaded files. This is fail-soft:
@@ -2494,6 +2704,24 @@ elif st.session_state.app_stage == 'processing':
             st.session_state.cdnr_summary = None
             st.session_state['auto_cdnr_error'] = str(_auto_cdnr_err)
 
+    # Keep the CDNR rows in the same portable memory so report re-uploads can
+    # resolve their hidden row IDs and apply decisions to notices and summaries.
+    _memory_cdnr_result = st.session_state.get("cdnr_result")
+    if st.session_state.get("memory_ready") and _memory_cdnr_result is not None and not _memory_cdnr_result.empty:
+        _cdnr_groups = (_memory_cdnr_result.groupby("Recon_Period", dropna=False)
+                        if "Recon_Period" in _memory_cdnr_result.columns
+                        else [(meta["period"], _memory_cdnr_result)])
+        for _cdnr_period, _cdnr_frame in _cdnr_groups:
+            _cdnr_run_id = uuid.uuid4().hex
+            save_run(
+                st.session_state["memory_path"], _cdnr_run_id, str(_cdnr_period), "CDNR",
+                cdnr_result_to_run_lines(_cdnr_frame, meta["fy"])
+            )
+            _memory_statuses.update(apply_decisions(st.session_state["memory_path"], _cdnr_run_id))
+            _memory_run_ids.append(_cdnr_run_id)
+        st.session_state["memory_final_statuses"] = _memory_statuses
+        st.session_state["memory_run_ids"] = _memory_run_ids
+        st.session_state["memory_dirty"] = True
     st.session_state.app_stage = 'results'
     st.rerun()
 
@@ -2510,6 +2738,32 @@ elif st.session_state.app_stage == 'results':
     fy     = st.session_state['meta_fy']
     period = st.session_state['meta_period']
 
+    # Reapply accepted upload decisions to the live results before scorecards,
+    # notices, and new report downloads are built.
+    _memory_current_statuses = st.session_state.get("memory_final_statuses", {})
+    if _memory_current_statuses:
+        result = apply_memory_final_statuses(result, fy, _memory_current_statuses, "GSTR2B")
+        st.session_state["last_result"] = result
+        _cdnr_live = st.session_state.get("cdnr_result")
+        if _cdnr_live is not None and not _cdnr_live.empty:
+            _cdnr_live = apply_memory_final_statuses(_cdnr_live, fy, _memory_current_statuses, "CDNR")
+            st.session_state["cdnr_result"] = _cdnr_live
+            _cdnr_status = _cdnr_live.get("Recon_Status_CDNR", pd.Series(dtype=str)).astype(str)
+            _cdnr_summary = dict(st.session_state.get("cdnr_summary") or {})
+            _cdnr_summary["matched_count"] = int(_cdnr_status.str.contains("Matched", case=False, na=False).sum())
+            _cdnr_summary["tax_error_count"] = int((_cdnr_status == "CDNR Matched (Tax Error)").sum())
+            _cdnr_summary["mismatch_count"] = int(_cdnr_status.str.contains("Mismatch", na=False).sum())
+            _cdnr_summary["ai_matched_count"] = int(_cdnr_status.str.contains("Smart Matched", na=False).sum())
+            _cdnr_summary["not_in_2b_count"] = int((_cdnr_status == "CDNR Not in GSTR-2B").sum())
+            _cdnr_summary["not_in_books_count"] = int((_cdnr_status == "CDNR Not in Books").sum())
+            _cdnr_summary["not_in_2b_value"] = float(
+                _cdnr_live.loc[_cdnr_status == "CDNR Not in GSTR-2B", "Taxable Value_BOOKS"].fillna(0).sum()
+            ) if "Taxable Value_BOOKS" in _cdnr_live.columns else 0.0
+            _cdnr_summary["not_in_books_value"] = float(
+                _cdnr_live.loc[_cdnr_status == "CDNR Not in Books", "Taxable Value_GST"].fillna(0).sum()
+            ) if "Taxable Value_GST" in _cdnr_live.columns else 0.0
+            st.session_state["cdnr_summary"] = _cdnr_summary
+
     st.markdown(f"""
     <div style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:14px 18px;margin-bottom:10px">
       <div style="font-size:11px;font-weight:800;color:#64748B;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Party Name</div>
@@ -2519,6 +2773,21 @@ elif st.session_state.app_stage == 'results':
 
     # Safe display copy
     result_display = result.copy()
+    _memory_final_statuses = st.session_state.get("memory_final_statuses", {})
+    for _side_code, _suffix in (("B", "_BOOKS"), ("G", "_GST")):
+        def _memory_engine_status(row):
+            return row.get("_Engine_Status_Original", row.get("Recon_Status", ""))
+        def _memory_final_status(row, side=_side_code, suffix=_suffix):
+            _gstin = row.get("GSTIN" + suffix)
+            _invoice = row.get("Invoice Number" + suffix)
+            if pd.isna(_gstin) or pd.isna(_invoice):
+                return ""
+            _doc = next((row.get(k + suffix) for k in ("Document Type", "Invoice Type", "Doc Type")
+                         if row.get(k + suffix) is not None), "")
+            _row_id = make_row_id(_gstin, _invoice, side, _doc, fy)
+            return _memory_final_statuses.get(_row_id, row.get("Recon_Status", ""))
+        result_display[f"Engine_Status_{_side_code}"] = result_display.apply(_memory_engine_status, axis=1)
+        result_display[f"final_status_{_side_code}"] = result_display.apply(_memory_final_status, axis=1)
     if 'Invoice Date_BOOKS' in result_display.columns:
         result_display['Invoice Date_BOOKS'] = pd.to_datetime(
             result_display['Invoice Date_BOOKS'], dayfirst=True, errors='coerce'
@@ -3337,7 +3606,7 @@ elif st.session_state.app_stage == 'results':
                                         for v in imp_selected_vendors:
                                             try:
                                                 imp_gstin = str(imp_df[imp_df['Name of Party'] == v]['GSTIN'].iloc[0]) if 'GSTIN' in imp_df.columns else ''
-                                                imp_zip.writestr(f"GST_Notice_{v}.pdf", create_vendor_pdf(imp_df, v, imp_company, imp_gstin).getvalue())
+                                                imp_zip.writestr(f"GST_Notice_{v}.pdf", create_vendor_pdf(imp_df, v, imp_company, imp_gstin, lang=st.session_state.get('wa_lang', 'en')).getvalue())
                                             except Exception as _pe: imp_errors.append(f"{v}: {_pe}")
                                     if imp_errors: st.warning("Some PDFs failed: " + "; ".join(imp_errors))
                                     st.download_button("⬇️ Download PDF Notices ZIP", data=imp_zip_buf.getvalue(),
@@ -3457,13 +3726,17 @@ elif st.session_state.app_stage == 'results':
                     display:flex;align-items:center;gap:10px;margin-bottom:12px">
           <span style="font-size:16px">🌐</span>
           <span style="font-size:12px;font-weight:700;color:var(--amber-dk)">
-            Choose notice language — applies to WhatsApp messages and bulk .txt export
+            Choose notice language — applies to PDF notices, WhatsApp messages, and bulk .txt export
           </span>
         </div>
         """, unsafe_allow_html=True)
         _lang_sel = st.radio("Language", ["🇬🇧 English", "🇮🇳 Hindi", "🇮🇳 Gujarati"],
                              horizontal=True, key="global_lang_radio")
-        _global_lang = 'en' if 'English' in _lang_sel else ('hi' if 'Hindi' in _lang_sel else 'gu')
+        _global_lang = {
+            "🇬🇧 English": "en",
+            "🇮🇳 Hindi": "hi",
+            "🇮🇳 Gujarati": "gu",
+        }.get(_lang_sel, "en")
         st.session_state['wa_lang'] = _global_lang
 
         # ── TWO EXCLUSIVE CATEGORY PANELS ────────────────────────────────────
@@ -3518,7 +3791,7 @@ elif st.session_state.app_stage == 'results':
                         _z2b = io.BytesIO()
                         with zipfile.ZipFile(_z2b, "a", zipfile.ZIP_DEFLATED, False) as _zf:
                             for _v in _sel_2b:
-                                _pdf = create_vendor_pdf(notice_result[notice_result['Recon_Status'] == 'Invoices Not in GSTR-2B'], _v, name, gstin)
+                                _pdf = create_vendor_pdf(notice_result[notice_result['Recon_Status'] == 'Invoices Not in GSTR-2B'], _v, name, gstin, lang=_global_lang)
                                 _zf.writestr(f"NotIn2B_Notice_{_v}.pdf", _pdf.getvalue())
                         st.download_button("⬇️ Download ZIP", data=_z2b.getvalue(),
                                            file_name=f"NotIn2B_Notices_{period}.zip",
@@ -3567,7 +3840,7 @@ elif st.session_state.app_stage == 'results':
                         _znb = io.BytesIO()
                         with zipfile.ZipFile(_znb, "a", zipfile.ZIP_DEFLATED, False) as _zf:
                             for _v in _sel_nb:
-                                _pdf = create_vendor_pdf(notice_result[notice_result['Recon_Status'] == 'Invoices Not in Purchase Books'], _v, name, gstin)
+                                _pdf = create_vendor_pdf(notice_result[notice_result['Recon_Status'] == 'Invoices Not in Purchase Books'], _v, name, gstin, lang=_global_lang)
                                 _zf.writestr(f"NotInBooks_Notice_{_v}.pdf", _pdf.getvalue())
                         st.download_button("⬇️ Download ZIP", data=_znb.getvalue(),
                                            file_name=f"NotInBooks_Notices_{period}.zip",
@@ -3626,7 +3899,7 @@ elif st.session_state.app_stage == 'results':
                 zip_buffer_pdf = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer_pdf, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
                     for v in selected_vendors_bulk:
-                        pdf_data = create_vendor_pdf(notice_result, v, name, gstin)
+                        pdf_data = create_vendor_pdf(notice_result, v, name, gstin, lang=_global_lang)
                         zip_file.writestr(f"GST_Notice_{v}.pdf", pdf_data.getvalue())
                 filtered_df    = notice_result[notice_result['Name of Party'].isin(selected_vendors_bulk)]
                 zip_buffer_xls = generate_vendor_split_zip(filtered_df)
@@ -3728,7 +4001,7 @@ elif st.session_state.app_stage == 'results':
                         """, unsafe_allow_html=True)
 
                 elif comm_mode == "📄 Preview PDF":
-                    pdf_data = create_vendor_pdf(notice_result, selected_vendor, name, gstin)
+                    pdf_data = create_vendor_pdf(notice_result, selected_vendor, name, gstin, lang=_global_lang)
                     st.download_button(f"⬇️ Download Notice PDF — {selected_vendor}", data=pdf_data.getvalue(),
                                        file_name=f"GST_Notice_{selected_vendor}.pdf", mime="application/pdf",
                                        type="primary", use_container_width=True, key="single_pdf_dl")

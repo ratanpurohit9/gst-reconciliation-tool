@@ -4,6 +4,7 @@ import io
 import xlsxwriter
 import numpy as np
 import zipfile
+from recon_memory import make_row_id
 
 def safe_date_format(series):
     temp = pd.to_datetime(series, dayfirst=True, errors='coerce')
@@ -543,6 +544,22 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
         for c in cols:
             if c not in df_sub.columns: df_sub[c]=np.nan
         df_export=df_sub[cols].copy(); df_export.columns=heads
+
+        def _memory_row_id(row, side):
+            suffix = '_BOOKS' if side == 'B' else '_GST'
+            gstin = row.get('GSTIN' + suffix)
+            invoice = row.get('Invoice Number' + suffix)
+            if pd.isna(gstin) or pd.isna(invoice):
+                return ''
+            doc = next((row.get(k + suffix) for k in ('Document Type', 'Invoice Type', 'Doc Type')
+                        if row.get(k + suffix) is not None and not pd.isna(row.get(k + suffix))), '')
+            return make_row_id(gstin, invoice, side, doc, fy)
+
+        df_export['Books Row ID'] = [_memory_row_id(row, 'B') for _, row in df_sub.iterrows()]
+        df_export['2B Row ID'] = [_memory_row_id(row, 'G') for _, row in df_sub.iterrows()]
+        df_export['Memory Decision'] = ''
+        df_export['Linked To'] = ''
+        heads = heads + ['Books Row ID', '2B Row ID', 'Memory Decision', 'Linked To']
         df_export.to_excel(writer,sheet_name=name,startrow=7,header=False,index=False)
         ws=writer.sheets[name]
         write_meta(ws,f"Report :: {name}",len(heads)-1)
@@ -564,6 +581,24 @@ def generate_excel(full_df, company_gstin, company_name, fy, period, cdnr_df=Non
                 ws.write(6,i,h,fmt_orange if 2<=i<=7 else fmt_green if 8<=i<=13 else fmt_gray if 14<=i<=17 else fmt_yellow if h in ('Match Logic','Match Reason') else fmt_blue)
             ws.set_column(3,3,12,fmt_date_col); ws.set_column(9,9,12,fmt_date_col)
         ws.set_column(0,1,20); ws.set_column(2,2,18); ws.set_column(8,8,18)
+        _memory_decision_col = heads.index('Memory Decision')
+        _memory_books_id_col = heads.index('Books Row ID')
+        _memory_2b_id_col = heads.index('2B Row ID')
+        ws.set_column(_memory_books_id_col, _memory_2b_id_col, None, None, {'hidden': True})
+        ws.set_column(_memory_decision_col, _memory_decision_col, 20)
+        ws.set_column(_memory_decision_col + 1, _memory_decision_col + 1, 20)
+        ws.data_validation(7, _memory_decision_col, max(7, 6 + len(df_export)), _memory_decision_col, {
+            'validate': 'list', 'source': ['Link', 'Accept', 'Action'],
+            'input_title': 'Choose a decision', 'input_message': 'Use only Link, Accept, or Action.',
+            'error_title': 'Invalid decision', 'error_message': 'Choose Link, Accept, or Action from the list.',
+            'error_type': 'stop'
+        })
+        # Keep the Smart Matched label readable beside its specific match logic.
+        status_col = heads.index('Status') if 'Status' in heads else heads.index('Recon_Status')
+        logic_col = heads.index('Match Logic') if 'Match Logic' in heads else None
+        ws.set_column(status_col, status_col, 34)
+        if logic_col is not None:
+            ws.set_column(logic_col, logic_col, 22)
         if conf_col is not None and len(df_export) > 0:
             first_row, last_row = 7, 7 + len(df_export) - 1
             ws.conditional_format(first_row, conf_col, last_row, conf_col, {

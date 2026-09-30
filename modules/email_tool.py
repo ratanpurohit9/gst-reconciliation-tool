@@ -211,7 +211,7 @@ def generate_whatsapp_message(df, vendor_name, company_name):
     total_inv   = sum(len(v) for v in groups.values())
     total_tax_b = sum(float(r.get('Taxable Value_BOOKS', 0) or 0)
                       for rows in groups.values() for r in rows)
-    today = pd.Timestamp.now().strftime('%d %b %Y')
+    today = pd.Timestamp.now().strftime('%d/%m/%Y')
 
     # ── STATUS CONFIG ─────────────────────────────────────────────────────────
     STATUS_ICONS  = {
@@ -239,9 +239,15 @@ def generate_whatsapp_message(df, vendor_name, company_name):
     # ── HEADER ────────────────────────────────────────────────────────────────
     msg  = f"*📋 GST Reconciliation Notice*\n"
     msg += f"{'─' * 30}\n"
-    msg += f"*From :* {company_name}\n"
-    msg += f"*To   :* {vendor_name}\n"
-    msg += f"*Date :* {today}\n"
+    header_labels = {
+        "en": ("From", "To", "Date"),
+        "hi": ("से", "को", "दिनांक"),
+        "gu": ("તરફથી", "માટે", "તારીખ"),
+    }
+    from_label, to_label, date_label = header_labels[lang]
+    msg += f"*{from_label} :* {company_name}\n"
+    msg += f"*{to_label}   :* {vendor_name}\n"
+    msg += f"*{date_label}:* {today}\n"
     msg += f"{'─' * 30}\n\n"
     msg += (f"Our GSTR-2B reconciliation identified *{total_inv} invoice(s)* "
             f"requiring your attention (Taxable: *{fi(total_tax_b)}*).\n\n")
@@ -406,6 +412,8 @@ def generate_targeted_notice(df, vendor_name, company_name, category='not_in_2b'
     category: 'not_in_2b' or 'not_in_books'
     lang:     'en', 'hi', 'gu'
     """
+    lang = str(lang or "en").strip().lower()
+    lang = lang if lang in {"en", "hi", "gu"} else "en"
     status_filter = _CAT_STATUS[category]
     T = _CAT_TEMPLATES[category][lang]
 
@@ -417,7 +425,7 @@ def generate_targeted_notice(df, vendor_name, company_name, category='not_in_2b'
     if vendor_df.empty:
         return ""
 
-    today = pd.Timestamp.now().strftime('%d %b %Y')
+    today = pd.Timestamp.now().strftime('%d/%m/%Y')
     total_inv = len(vendor_df)
 
     # Value column depends on category
@@ -479,6 +487,25 @@ _HINDI = {
     'from':       'से',
     'to':         'को',
     'date_lbl':   'दिनांक',
+    'invoice_lbl': 'चालान',
+    'invoice_unit': 'चालान',
+    'books_lbl': 'बही',
+    'portal_lbl': 'पोर्टल',
+    'taxable_lbl': 'कर योग्य',
+    'total_lbl': 'कुल',
+    'diff_lbl': 'अंतर',
+    'status_names': {
+        'Invoices Not in GSTR-2B': 'GSTR-2B में उपलब्ध नहीं',
+        'Invoices Not in Purchase Books': 'खरीद बही में दर्ज नहीं',
+        'Smart Matched (Mismatch)': 'राशि में अंतर',
+        'Matched (Tax Error)': 'कर विभाजन में त्रुटि',
+        'Smart Matched (Date Mismatch)': 'दिनांक में अंतर',
+        'Smart Matched (Invoice Mismatch)': 'चालान संख्या में अंतर',
+        'Suggestion (Group Match)': 'संभावित समूह मिलान',
+        'Suggestion': 'संभावित मिलान',
+        'Manually Linked': 'मैन्युअल रूप से मिलान किया',
+        'DEFAULT': 'विसंगति',
+    },
     'intro':      'हमारे GSTR-2B सुलह में *{n} चालान* में विसंगति पाई गई (कर योग्य: *{tax}*)।',
     'subtotal':   'उप-योग: {tax}  |  कार्रवाई: {action}',
     'footer':     '⚠ *कृपया अगली GSTR-1 दाखिल करने से पहले उपरोक्त सभी प्रविष्टियों पर कार्रवाई करें और पुष्टि करें।*',
@@ -501,6 +528,25 @@ _GUJARATI = {
     'from':       'તરફથી',
     'to':         'માટે',
     'date_lbl':   'તારીખ',
+    'invoice_lbl': 'ઇન્વૉઇસ',
+    'invoice_unit': 'ઇન્વૉઇસ',
+    'books_lbl': 'બહી',
+    'portal_lbl': 'પોર્ટલ',
+    'taxable_lbl': 'કરપાત્ર',
+    'total_lbl': 'કુલ',
+    'diff_lbl': 'તફાવત',
+    'status_names': {
+        'Invoices Not in GSTR-2B': 'GSTR-2B માં ઉપલબ્ધ નથી',
+        'Invoices Not in Purchase Books': 'ખરીદ બહીમાં નોંધાયેલ નથી',
+        'Smart Matched (Mismatch)': 'રકમમાં તફાવત',
+        'Matched (Tax Error)': 'કર વિભાજનમાં ભૂલ',
+        'Smart Matched (Date Mismatch)': 'તારીખમાં તફાવત',
+        'Smart Matched (Invoice Mismatch)': 'ઇન્વૉઇસ નંબરમાં તફાવત',
+        'Suggestion (Group Match)': 'સંભવિત સમૂહ મેળ',
+        'Suggestion': 'સંભવિત મેળ',
+        'Manually Linked': 'મેન્યુઅલી મેળ કર્યો',
+        'DEFAULT': 'વિસંગતિ',
+    },
     'intro':      'અમારા GSTR-2B સમાધાનમાં *{n} ઇન્વૉઇસ* માં વિસંગતતા જોવા મળી (કરપાત્ર: *{tax}*).',
     'subtotal':   'પેટા-સરવાળો: {tax}  |  ક્રિયા: {action}',
     'footer':     '⚠ *કૃપા કરીને આગામી GSTR-1 ફાઇલ કરતા પહેલા ઉપરોક્ત તમામ પ્રવિષ્ટિઓ પર કાર્ય કરો અને પુષ્ટિ આપો.*',
@@ -531,6 +577,8 @@ def generate_whatsapp_message_multilang(df, vendor_name, company_name, lang='hi'
     lang: 'hi' = Hindi, 'gu' = Gujarati
     Produces same structure as English version but in the chosen language.
     """
+    lang = str(lang or "hi").strip().lower()
+    lang = lang if lang in {"hi", "gu"} else "hi"
     L = _HINDI if lang == 'hi' else _GUJARATI
 
     vendor_df = df[
@@ -549,7 +597,7 @@ def generate_whatsapp_message_multilang(df, vendor_name, company_name, lang='hi'
     total_inv   = sum(len(v) for v in groups.values())
     total_tax_b = sum(float(r.get('Taxable Value_BOOKS', 0) or 0)
                       for rows in groups.values() for r in rows)
-    today = pd.Timestamp.now().strftime('%d %b %Y')
+    today = pd.Timestamp.now().strftime('%d/%m/%Y')
 
     STATUS_ICONS = {
         'Invoices Not in GSTR-2B':        '🔴',
@@ -572,7 +620,7 @@ def generate_whatsapp_message_multilang(df, vendor_name, company_name, lang='hi'
 
     for grp_no, (status, rows) in enumerate(groups.items(), 1):
         icon   = STATUS_ICONS.get(status, '⚪')
-        short  = _get_msg(status, 'short')
+        short  = L['status_names'].get(status, L['status_names']['DEFAULT'])
         action = _get_action_lang(status, L)
 
         grp_taxable = sum(
@@ -580,19 +628,19 @@ def generate_whatsapp_message_multilang(df, vendor_name, company_name, lang='hi'
             for r in rows
         ) or sum(float(r.get('Taxable Value_GST', 0) or 0) for r in rows)
 
-        msg += f"{icon} *{grp_no}. {short}*  ({len(rows)})\n"
+        msg += f"{icon} *{grp_no}. {short}*  ({len(rows)} {L['invoice_unit']})\n"
         for row in rows:
             d = _get_row_data(row)
             inv_str = str(d['inv']) if d['inv'] and str(d['inv']) not in ('', 'nan') else '—'
             if 'Not in GSTR-2B' in status:
-                val_line = f"Taxable {fi(d['tb'])}  |  Total *{fi(d['tot_b'])}*"
+                val_line = f"{L['taxable_lbl']} {fi(d['tb'])}  |  {L['total_lbl']} *{fi(d['tot_b'])}*"
             elif 'Not in Purchase Books' in status:
-                val_line = f"Portal Taxable {fi(d['tg'])}  |  Total *{fi(d['tot_g'])}*"
+                val_line = f"{L['portal_lbl']} {L['taxable_lbl']} {fi(d['tg'])}  |  {L['total_lbl']} *{fi(d['tot_g'])}*"
             else:
                 diff = abs(d['tot_b'] - d['tot_g'])
-                val_line = (f"Books {fi(d['tot_b'])}  Portal {fi(d['tot_g'])}"
-                            + (f"  ⚠ *Diff {fi(diff)}*" if diff > 0.5 else ""))
-            msg += f"   • Inv *{inv_str}*  |  {d['date']}\n"
+                val_line = (f"{L['books_lbl']} {fi(d['tot_b'])}  {L['portal_lbl']} {fi(d['tot_g'])}"
+                            + (f"  ⚠ *{L['diff_lbl']} {fi(diff)}*" if diff > 0.5 else ""))
+            msg += f"   • {L['invoice_lbl']} *{inv_str}*  |  {d['date']}\n"
             msg += f"     {val_line}\n"
 
         msg += f"   _{L['subtotal'].format(tax=fi(grp_taxable), action=action)}_\n\n"

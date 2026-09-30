@@ -48,6 +48,21 @@ if not _BASE_FONT:
     _BASE_FONT, _BASE_FONT_BOLD = 'Helvetica', 'Helvetica-Bold'
     _CURRENCY_PREFIX = "Rs."
 
+# Indic fonts installed by packages.txt on Streamlit/Linux deployments.
+_NOTO_DEV = ("/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
+             "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf")
+_NOTO_GUJ = ("/usr/share/fonts/truetype/noto/NotoSansGujarati-Regular.ttf",
+             "/usr/share/fonts/truetype/noto/NotoSansGujarati-Bold.ttf")
+_FONT_FOR_LANG = {}
+for _lang, _font_name, _paths in (
+    ("hi", "NotoDevanagari", _NOTO_DEV),
+    ("gu", "NotoGujarati", _NOTO_GUJ),
+):
+    if _os.path.exists(_paths[0]):
+        _bold_path = _paths[1] if _os.path.exists(_paths[1]) else _paths[0]
+        if _reg(_font_name, _font_name + "-Bold", _paths[0], _bold_path):
+            _FONT_FOR_LANG[_lang] = (_font_name, _font_name + "-Bold")
+
 # ─── Palette ──────────────────────────────────────────────────────────────────
 DARK_NAVY   = colors.HexColor("#1F3864")
 MID_BLUE    = colors.HexColor("#2E75B6")
@@ -152,10 +167,19 @@ STATUS_CONFIG = {
     },
 }
 
-def get_status_config(status):
-    for key in STATUS_CONFIG:
+
+PDF_TRANSLATIONS = {"hi":{"title":"जीएसटी मिलान सूचना","date":"दिनांक","to":"प्रति,","dept":"लेखा / जीएसटी विभाग","subject":"जीएसटीआर-2बी बनाम खरीद पुस्तकों का मिलान — विसंगति सूचना","intro":"महोदय / महोदया,<br/>खरीद पुस्तिका और जीएसटीआर-2बी के मिलान में <b>{n} चालान</b> तथा <b>{k} प्रकार की विसंगतियाँ</b मिली हैं। कृपया जाँच कर शीघ्र सुधार करें।","summary":["कुल चालान","कुल कर योग्य मूल्य","कुल कर"],"action":"आवश्यक कार्रवाई:","delay":"नोट: देरी से आईटीसी वापस हो सकती है और ब्याज देय हो सकता है।","close":"कृपया सभी प्रविष्टियों का मिलान कर आगामी जीएसटीआर-1 में आवश्यक संशोधन करें। सुधार पूरा होने पर लिखित पुष्टि दें।","faith":"सादर,","sign":"[अधिकृत हस्ताक्षरकर्ता]","status_labels":["बिल अपलोड नहीं किया","अज्ञात पोर्टल प्रविष्टि","दिनांक में अंतर","चालान संख्या में अंतर","मूल्य में अंतर","कर राशि में त्रुटि","संभावित मिलान","समूह मिलान सुझाव","मैन्युअल लिंक"],"status_desc":["पुस्तिका में दर्ज बिल जीएसटीआर-2बी में नहीं दिख रहा।","चालान जीएसटीआर-2बी में है, पर खरीद पुस्तिका में नहीं मिला।","चालान की तारीख जीएसटीआर-1 और पुस्तिका में अलग है।","जीएसटीआर-1 में चालान संख्या पुस्तिका से अलग है।","कर योग्य मूल्य या कर राशि रिकॉर्ड से अलग है।","IGST/CGST/SGST राशि में अंतर है।","संभावित मिलान है; मैन्युअल सत्यापन आवश्यक है।","कई चालान एक समेकित प्रविष्टि से मेल खा सकते हैं।","यह चालान मैन्युअल रूप से जोड़ा गया है; विवरण सत्यापित करें।"],"status_action":["जीएसटीआर-1 में लंबित बिल शीघ्र अपलोड कर पुष्टि दें।","डिलीवरी प्रमाण या चालान प्रति दें; गलती से अपलोड हुआ हो तो क्रेडिट नोट जारी करें।","जीएसटीआर-1 में तारीख पुस्तिका के अनुसार संशोधित करें।","जीएसटीआर-1 में चालान संख्या पुस्तिका के अनुसार संशोधित करें।","जीएसटीआर-1 में मूल्य और कर राशि हमारे रिकॉर्ड के अनुसार संशोधित करें।","जीएसटीआर-1 में IGST/CGST/SGST कर विभाजन जाँचें और सुधारें।","जाँचकर पुष्टि करें कि चालान आपके रिकॉर्ड से मेल खाता है या नहीं।","प्रविष्टियों की जाँच कर पुष्टि करें या संशोधन करें।","विवरण सत्यापित करें और अंतर हो तो जीएसटीआर-1 में संशोधन करें।"],"table":["क्र.","चालान संख्या<br/>(पुस्तक → पोर्टल)","दिनांक","पुस्तक<br/>कर योग्य","पुस्तक<br/>कर","पोर्टल<br/>कर योग्य","पोर्टल<br/>कर","अंतर","चालान सं.","कर योग्य","कुल","IGST","CGST","कुल","चालान","कुल","ઇન્વૉઇસ"]},"gu":{"title":"GST સમાધાન સૂચના","date":"તારીખ","to":"પ્રતિ,","dept":"હિસાબ / GST વિભાગ","subject":"GSTR-2B સામે ખરીદીના ચોપડાનું સમાધાન — વિસંગતતા સૂચના","intro":"માનનીય મહોદય / મહોદયા,<br/>ખરીદી રજિસ્ટર અને GSTR-2Bના સમાધાનમાં <b>{n} ઇન્વૉઇસ</b> તથા <b>{k} પ્રકારની વિસંગતતા</b મળી છે. કૃપા કરીને તપાસી વહેલી તકે સુધારો કરો.","summary":["કુલ ઇન્વૉઇસ","કુલ કરપાત્ર મૂલ્ય","કુલ કર"],"action":"જરૂરી કાર્યવાહી:","delay":"નોંધ: વિલંબથી ITC રિવર્સલ અને વ્યાજની જવાબદારી થઈ શકે છે.","close":"તમામ એન્ટ્રીઓનું સમાધાન કરી આગામી GSTR-1 રિટર્નમાં જરૂરી સુધારા કરો. સુધારા પછી લેખિત પુષ્ટિ આપશો.","faith":"આપનો વિશ્વાસુ,","sign":"[અધિકૃત સહીકર્તા]","status_labels":["બિલ અપલોડ થયું નથી","અજાણી પોર્ટલ એન્ટ્રી","તારીખમાં ફેર","ઇન્વૉઇસ નંબરમાં ફેર","મૂલ્યમાં ફેર","કરની રકમમાં ભૂલ","સંભવિત મેળ","જૂથ મેળ સૂચન","મેન્યુઅલ લિંક"],"status_desc":["ચોપડામાં નોંધાયેલું બિલ GSTR-2Bમાં દેખાતું નથી.","ઇન્વૉઇસ GSTR-2Bમાં છે, પરંતુ ખરીદી ચોપડામાં મળ્યું નથી.","GSTR-1 અને ખરીદી રેકોર્ડમાં તારીખ અલગ છે.","GSTR-1માં ઇન્વૉઇસ નંબર ખરીદી ચોપડાથી અલગ છે.","કરપાત્ર મૂલ્ય અથવા કરની રકમ રેકોર્ડથી અલગ છે.","IGST/CGST/SGSTની રકમમાં ફેર છે.","સંભવિત મેળ છે; મેન્યુઅલ ચકાસણી જરૂરી છે.","કેટલાક ઇન્વૉઇસ એક સંકલિત એન્ટ્રી સાથે મેળ ખાઈ શકે છે.","આ ઇન્વૉઇસ મેન્યુઅલી જોડાયું છે; વિગતો ચકાસો."],"status_action":["બાકી બિલ GSTR-1માં વહેલી તકે અપલોડ કરી પુષ્ટિ આપો.","ડિલિવરીનો પુરાવો અથવા ઇન્વૉઇસ નકલ આપો; ભૂલથી અપલોડ થયું હોય તો ક્રેડિટ નોટ આપો.","GSTR-1માં તારીખ ખરીદી રેકોર્ડ મુજબ સુધારો.","GSTR-1માં ઇન્વૉઇસ નંબર ખરીદી ચોપડા મુજબ સુધારો.","GSTR-1માં મૂલ્ય અને કરની રકમ અમારા રેકોર્ડ મુજબ સુધારો.","GSTR-1માં IGST/CGST/SGST કર વિભાજન તપાસી સુધારો.","તપાસો કે ઇન્વૉઇસ તમારા રેકોર્ડ સાથે મેળ ખાય છે કે નહીં.","એન્ટ્રીઓ તપાસી પુષ્ટિ કરો અથવા સુધારો કરો.","વિગતો ચકાસો અને ફેર હોય તો GSTR-1માં સુધારો કરો."],"table":["ક્ર.","ઇન્વૉઇસ નંબર<br/>(ચોપડા → પોર્ટલ)","તારીખ","ચોપડા<br/>કરપાત્ર","ચોપડા<br/>કર","પોર્ટલ<br/>કરપાત્ર","પોર્ટલ<br/>કર","ફેર","ઇન્વૉઇસ નં.","કરપાત્ર","કુલ","IGST","CGST","કુલ","ઇન્વૉઇસ","કુલ","ઇન્વૉઇસ"]}}
+
+def get_status_config(status, lang='en'):
+    for key in sorted(STATUS_CONFIG, key=len, reverse=True):
         if key != "DEFAULT" and key in str(status):
-            return STATUS_CONFIG[key]
+            cfg = dict(STATUS_CONFIG[key])
+            if lang in PDF_TRANSLATIONS and key in list(STATUS_CONFIG)[:9]:
+                idx = list(STATUS_CONFIG).index(key)
+                cfg["label"] = PDF_TRANSLATIONS[lang]["status_labels"][idx]
+                cfg["desc"] = PDF_TRANSLATIONS[lang]["status_desc"][idx]
+                cfg["action"] = PDF_TRANSLATIONS[lang]["status_action"][idx]
+            return cfg
     return STATUS_CONFIG["DEFAULT"]
 
 def fc(val, show_zero=False, abs_val=False):
@@ -217,11 +241,11 @@ def S(name, **kwargs):
     return ParagraphStyle(name, **kw)
 
 
-def _header_table(company_name, gstin, today, W):
+def _header_table(company_name, gstin, today, W, lang='en'):
     left  = [[Paragraph(company_name.upper(), S("title"))],
               [Paragraph(f"GSTIN: {gstin}", S("subtitle"))]]
-    right = [[Paragraph("GST RECONCILIATION NOTICE", S("title"))],
-              [Paragraph(f"Date: {today}", S("subtitle"))]]
+    right = [[Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("title", "GST RECONCILIATION NOTICE"), S("title"))],
+              [Paragraph(f"{PDF_TRANSLATIONS.get(lang, {}).get('date', 'Date')}: {today}", S("subtitle"))]]
 
     lt = Table(left,  colWidths=[W * 0.55])
     rt = Table(right, colWidths=[W * 0.45])
@@ -241,9 +265,9 @@ def _header_table(company_name, gstin, today, W):
     return outer
 
 
-def _to_box(vendor_name, vendor_gstin, W):
-    rows = [[Paragraph("To,", S("small"))],
-             [Paragraph("The Accounts / GST Department", S("bold"))],
+def _to_box(vendor_name, vendor_gstin, W, lang='en'):
+    rows = [[Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("to", "To,"), S("small"))],
+             [Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("dept", "The Accounts / GST Department"), S("bold"))],
              [Paragraph(vendor_name, ParagraphStyle("vn", fontName=_BASE_FONT_BOLD, fontSize=11, textColor=DARK_NAVY))],
              [Paragraph(f"GSTIN: {vendor_gstin}", S("small"))]]
     t = Table(rows, colWidths=[W - 16])
@@ -255,7 +279,7 @@ def _to_box(vendor_name, vendor_gstin, W):
     return t
 
 
-def _summary_box(inv_count, tot_tax, tot_igst, tot_cgst, tot_sgst, status_counts, W):
+def _summary_box(inv_count, tot_tax, tot_igst, tot_cgst, tot_sgst, status_counts, W, lang='en'):
     total_tax = tot_igst + tot_cgst + tot_sgst
 
     # Row 1: 3 stat cells
@@ -267,9 +291,9 @@ def _summary_box(inv_count, tot_tax, tot_igst, tot_cgst, tot_sgst, status_counts
         return t
 
     cw3 = W / 3
-    row1 = [[stat_cell("Total Invoices", str(inv_count), MID_BLUE, cw3-8),
-              stat_cell("Total Taxable Value", fc(tot_tax, show_zero=True), DARK_NAVY, cw3-8),
-              stat_cell("Total Tax (IGST+CGST+SGST)", fc(total_tax, show_zero=True), ACCENT_RED, cw3-8)]]
+    row1 = [[stat_cell(PDF_TRANSLATIONS.get(lang, {}).get("summary", ["Total Invoices","Total Taxable Value","Total Tax"])[0], str(inv_count), MID_BLUE, cw3-8),
+              stat_cell(PDF_TRANSLATIONS.get(lang, {}).get("summary", ["Total Invoices","Total Taxable Value","Total Tax"])[1], fc(tot_tax, show_zero=True), DARK_NAVY, cw3-8),
+              stat_cell(PDF_TRANSLATIONS.get(lang, {}).get("summary", ["Total Invoices","Total Taxable Value","Total Tax"])[2], fc(total_tax, show_zero=True), ACCENT_RED, cw3-8)]]
 
     t1 = Table(row1, colWidths=[cw3]*3)
     t1.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),BG_GRAY),
@@ -293,6 +317,8 @@ def _summary_box(inv_count, tot_tax, tot_igst, tot_cgst, tot_sgst, status_counts
     chips = []
     for st, cnt in status_counts.items():
         lbl, clr = STATUS_LABELS.get(st, (st[:12].upper(), MID_BLUE))
+        if lang in PDF_TRANSLATIONS and st in list(STATUS_CONFIG)[:9]:
+            lbl = PDF_TRANSLATIONS[lang]["status_labels"][list(STATUS_CONFIG).index(st)]
         chip_t = Table([[Paragraph(f"{cnt}x {lbl}",
                           ParagraphStyle("chip",fontName=_BASE_FONT_BOLD,fontSize=7.5,textColor=WHITE,alignment=TA_CENTER))]],
                         colWidths=[max(60, len(lbl)*5.5 + 20)])
@@ -318,24 +344,24 @@ def _summary_box(inv_count, tot_tax, tot_igst, tot_cgst, tot_sgst, status_counts
     return outer
 
 
-def _invoice_table(rows_data, status, W):
-    cfg      = get_status_config(status)
+def _invoice_table(rows_data, status, W, lang='en'):
+    cfg      = get_status_config(status, lang)
     has_both = any(r.get('has_gst') for r in rows_data)
     is_inv_mismatch = 'Invoice Mismatch' in str(status)
 
     if is_inv_mismatch:
         # Combined cell: Sr | Inv No (Books → Portal) | Date | BooksTax | BooksTax$ | PortalTax | PortalTax$ | Diff
-        headers = ["Sr.", "Invoice Numbers\n(Books → Portal)", "Date",
+        headers = PDF_TRANSLATIONS[lang]["table"][:8] if lang in PDF_TRANSLATIONS else ["Sr.", "Invoice Numbers\n(Books → Portal)", "Date",
                    "Books\nTaxable", "Books\nTax", "Portal\nTaxable", "Portal\nTax", "Diff"]
         cw_list = [14, 90, 46, 66, 54, 66, 54, 54]
     elif has_both:
         # 8 cols: Sr | InvNo | Date | BooksTax | BooksTaxAmt | PortalTax | PortalTaxAmt | Diff
-        headers = ["Sr.","Inv No.","Date","Books\nTaxable","Books\nTax","Portal\nTaxable","Portal\nTax","Diff"]
+        headers = [PDF_TRANSLATIONS[lang]["table"][i] for i in [0,8,2,3,4,5,6,7]] if lang in PDF_TRANSLATIONS else ["Sr.","Inv No.","Date","Books\nTaxable","Books\nTax","Portal\nTaxable","Portal\nTax","Diff"]
         cw_list = [16, 48, 46, 72, 60, 72, 60, 60]
     else:
         # 8 cols: Sr | InvNo | Date | Taxable | IGST | CGST | SGST | Total
         # Total must fit ₹12,99,168.50 = 14 chars at 8pt DejaVu ≈ 68pt minimum
-        headers = ["Sr.","Inv No.","Date","Taxable","IGST","CGST","SGST","Total"]
+        headers = [PDF_TRANSLATIONS[lang]["table"][i] for i in [0,8,2,9,11,12,13,10]] if lang in PDF_TRANSLATIONS else ["Sr.","Inv No.","Date","Taxable","IGST","CGST","SGST","Total"]
         cw_list = [16, 52, 46, 76, 56, 56, 56, 80]
 
     scale = (W - 2) / sum(cw_list)
@@ -408,15 +434,17 @@ def _invoice_table(rows_data, status, W):
         tbl_data.append(row)
 
     # Total row
+    total_label = PDF_TRANSLATIONS[lang]["table"][14] if lang in PDF_TRANSLATIONS else "TOTAL"
+    invoice_label = PDF_TRANSLATIONS[lang]["table"][15] if lang in PDF_TRANSLATIONS else "inv."
     if is_inv_mismatch:
-        tot_row=[Paragraph("",S("tbl_hdr")),Paragraph("TOTAL",S("tbl_hdr")),
-                 Paragraph(f"{len(rows_data)} inv.",S("tbl_hdr")),
+        tot_row=[Paragraph("",S("tbl_hdr")),Paragraph(total_label,S("tbl_hdr")),
+                 Paragraph("{} {}".format(len(rows_data), invoice_label),S("tbl_hdr")),
                  Paragraph(fc(tot_taxable),S("tbl_bold")), Paragraph(fc(tot_igst+tot_cgst+tot_sgst),S("tbl_bold")),
                  Paragraph(fc(tot_gtax),S("tbl_bold")), Paragraph(fc(tot_gigst+tot_gcgst+tot_gsgst),S("tbl_bold")),
                  Paragraph("",S("tbl_hdr"))]
     elif has_both:
-        tot_row=[Paragraph("",S("tbl_hdr")),Paragraph("TOTAL",S("tbl_hdr")),
-                 Paragraph(f"{len(rows_data)} inv.",S("tbl_hdr")),
+        tot_row=[Paragraph("",S("tbl_hdr")),Paragraph(total_label,S("tbl_hdr")),
+                 Paragraph("{} {}".format(len(rows_data), invoice_label),S("tbl_hdr")),
                  Paragraph(fc(tot_taxable),S("tbl_bold")), Paragraph(fc(tot_igst+tot_cgst+tot_sgst),S("tbl_bold")),
                  Paragraph(fc(tot_gtax),S("tbl_bold")), Paragraph(fc(tot_gigst+tot_gcgst+tot_gsgst),S("tbl_bold")),
                  Paragraph("",S("tbl_hdr"))]
@@ -455,13 +483,13 @@ def _invoice_table(rows_data, status, W):
     return t
 
 
-def _section(status, rows_data, W):
-    cfg=get_status_config(status)
+def _section(status, rows_data, W, lang='en'):
+    cfg=get_status_config(status, lang)
     elems=[]
 
     badge_data=[[Paragraph(f"  [{cfg['icon']}]  {cfg['label']}",
                             ParagraphStyle("bh",fontName=_BASE_FONT_BOLD,fontSize=9,textColor=WHITE)),
-                  Paragraph(f"{len(rows_data)} Invoice(s)",
+                  Paragraph("{} {}".format(len(rows_data), PDF_TRANSLATIONS[lang]["table"][15] if lang in PDF_TRANSLATIONS else "Invoice(s)"),
                              ParagraphStyle("bc",fontName=_BASE_FONT_BOLD,fontSize=8,textColor=WHITE,alignment=TA_RIGHT))]]
     badge=Table(badge_data, colWidths=[W*0.75, W*0.25])
     badge.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),cfg["color"]),
@@ -472,13 +500,13 @@ def _section(status, rows_data, W):
     elems.append(Spacer(1,3))
     elems.append(Paragraph(cfg["desc"], S("body")))
     elems.append(Spacer(1,4))
-    elems.append(_invoice_table(rows_data, status, W))
+    elems.append(_invoice_table(rows_data, status, W, lang))
     elems.append(Spacer(1,6))
 
     # Action box
-    act_rows=[[Paragraph("Action Required:", ParagraphStyle("ar",fontName=_BASE_FONT_BOLD,fontSize=9,textColor=cfg["color"]))],
+    act_rows=[[Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("action", "Action Required:"), ParagraphStyle("ar",fontName=_BASE_FONT_BOLD,fontSize=9,textColor=cfg["color"]))],
                [Paragraph(cfg["action"], S("body"))],
-               [Paragraph("Note: Delayed action may result in ITC reversal and interest liability at our end.", S("small"))]]
+               [Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("delay", "Note: Delayed action may result in ITC reversal and interest liability at our end."), S("small"))]]
     act=Table(act_rows, colWidths=[W-16])
     act.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),cfg["bg"]),
                                ('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5),
@@ -491,7 +519,10 @@ def _section(status, rows_data, W):
     return elems
 
 
-def create_vendor_pdf(df, vendor_name, company_name, gst_in_company):
+def create_vendor_pdf(df, vendor_name, company_name, gst_in_company, lang='en'):
+    global _BASE_FONT, _BASE_FONT_BOLD
+    if lang in _FONT_FOR_LANG:
+        _BASE_FONT, _BASE_FONT_BOLD = _FONT_FOR_LANG[lang]
     buffer=io.BytesIO()
     doc=SimpleDocTemplate(buffer, pagesize=A4,
                            leftMargin=18*mm, rightMargin=18*mm,
@@ -558,22 +589,23 @@ def create_vendor_pdf(df, vendor_name, company_name, gst_in_company):
     st_counts = {k:len(v) for k,v in groups.items()}
 
     elements=[]
-    elements.append(_header_table(company_name, gst_in_company, today, W))
+    elements.append(_header_table(company_name, gst_in_company, today, W, lang))
     elements.append(Spacer(1,10))
-    elements.append(_to_box(vendor_name, vendor_gstin, W))
+    elements.append(_to_box(vendor_name, vendor_gstin, W, lang))
     elements.append(Spacer(1,8))
     elements.append(Paragraph(
-        f"<b>Subject:</b> GSTR-2B vs Purchase Books Reconciliation — Discrepancy Notice",
+        f"<b>{PDF_TRANSLATIONS.get(lang, {}).get('subject_tag', 'Subject:')}</b> {PDF_TRANSLATIONS.get(lang, {}).get('subject', 'GSTR-2B vs Purchase Books Reconciliation — Discrepancy Notice')}",
         S("body")))
     elements.append(Spacer(1,4))
     elements.append(Paragraph(
+        PDF_TRANSLATIONS[lang]["intro"].format(n=tot_inv, k=len(st_counts)) if lang in PDF_TRANSLATIONS else
         f"Dear Sir / Madam,<br/>Upon reconciliation of our Purchase Register with GSTR-2B data, "
         f"we have identified <b>{tot_inv} invoice(s)</b> with discrepancies across "
         f"<b>{len(st_counts)} issue type(s)</b>. These directly impact our ITC eligibility. "
         f"Please review each section below and take prompt corrective action.",
         S("body")))
     elements.append(Spacer(1,6))
-    elements.append(_summary_box(tot_inv,tot_tax,tot_igst,tot_cgst,tot_sgst,st_counts,W))
+    elements.append(_summary_box(tot_inv,tot_tax,tot_igst,tot_cgst,tot_sgst,st_counts,W,lang))
     elements.append(Spacer(1,10))
     elements.append(HRFlowable(width=W, thickness=1.5, color=MID_BLUE))
     elements.append(Spacer(1,8))
@@ -582,22 +614,20 @@ def create_vendor_pdf(df, vendor_name, company_name, gst_in_company):
             "Invoices Not in Purchase Books","Smart Matched (Date Mismatch)",
             "Smart Matched (Invoice Mismatch)","Suggestion (Group Match)","Suggestion","Manually Linked"]
     for st in sorted(groups.keys(), key=lambda s: ORDER.index(s) if s in ORDER else 99):
-        for el in _section(st, groups[st], W):
+        for el in _section(st, groups[st], W, lang):
             elements.append(el)
 
     elements.append(HRFlowable(width=W, thickness=1, color=colors.HexColor("#CCCCCC")))
     elements.append(Spacer(1,6))
     elements.append(Paragraph(
-        "We request you to treat this matter with priority. Kindly reconcile all entries and "
-        "carry out necessary amendments in your upcoming GSTR-1 filing. Please confirm in writing "
-        "once all corrections have been made.", S("body")))
+        PDF_TRANSLATIONS.get(lang, {}).get("close", "We request you to treat this matter with priority and reconcile all entries in the upcoming GSTR-1 filing."), S("body")))
     elements.append(Spacer(1,16))
 
     # Signature
-    sig_rows=[[Paragraph("Yours faithfully,",S("body"))],
+    sig_rows=[[Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("faith", "Yours faithfully,"),S("body"))],
                [Spacer(1,28)],
                [Paragraph("_"*35,S("body"))],
-               [Paragraph("[Authorized Signatory]",S("bold"))],
+               [Paragraph(PDF_TRANSLATIONS.get(lang, {}).get("sign", "[Authorized Signatory]"),S("bold"))],
                [Paragraph(company_name,S("bold"))],
                [Paragraph(f"GSTIN: {gst_in_company}",S("small"))]]
     sig=Table(sig_rows, colWidths=[W/2])
