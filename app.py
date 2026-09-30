@@ -280,6 +280,7 @@ if _memory_ready:
                             _refreshed_statuses.update(apply_decisions(_memory_path, _run_id))
                         st.session_state["memory_final_statuses"] = _refreshed_statuses
                         st.session_state["memory_dirty"] = True
+                        st.session_state["combined_report_bytes"] = None
                 except (ValueError, OSError, sqlite3.Error) as _report_err:
                     st.session_state[_hash_key] = _report_hash
                     st.session_state[_error_key] = str(_report_err)
