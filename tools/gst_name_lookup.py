@@ -17,6 +17,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from tools import gstr2b_backend
 
 LOOKUP_URL = "https://services.gst.gov.in/services/searchtp"
+AUTH_LOOKUP_URL = "https://services.gst.gov.in/services/auth/searchtp"
 LOOKUP_SESSION_TTL_SECONDS = 20 * 60
 _sessions: dict[str, dict] = {}
 
@@ -148,6 +149,45 @@ def _extract_names(browser) -> tuple[str, str]:
     if legal and trade and trade.casefold() == legal.casefold():
         trade = ""
     return legal, trade
+
+def lookup_authenticated_name(browser, gstin: str) -> str:
+    """Fetch one taxpayer name using an already authenticated GST Portal browser."""
+    requested_gstin = str(gstin).strip().upper()
+    if not re.fullmatch(r"[0-9A-Z]{15}", requested_gstin):
+        raise ValueError("GSTIN must contain 15 letters and digits.")
+
+    browser.set_page_load_timeout(35)
+    current_url = (browser.current_url or "").lower()
+    if "/services/auth/searchtp" not in current_url:
+        browser.get(AUTH_LOOKUP_URL)
+
+    field = WebDriverWait(browser, 20).until(lambda d: d.find_element(By.ID, "for_gstin"))
+    if not field.is_displayed() or not field.is_enabled():
+        raise RuntimeError("GST Portal taxpayer search is not available in this session.")
+    field.clear()
+    field.send_keys(requested_gstin)
+    browser.find_element(By.ID, "lotsearch").click()
+
+    deadline = time.time() + 22
+    while time.time() < deadline:
+        body = browser.find_element(By.TAG_NAME, "body").text
+        header = re.search(
+            r"Search\s+Result\s+based\s+on\s+GSTIN/UIN\s*:\s*([A-Z0-9]{15})",
+            body,
+            flags=re.IGNORECASE,
+        )
+        if header and header.group(1).upper() == requested_gstin:
+            legal, trade = _extract_names(browser)
+            chosen = trade if trade and trade.lower() not in ("na", "n/a", "not available", "-") else legal
+            if chosen:
+                return chosen
+            raise RuntimeError("The GST Portal returned the GSTIN but no legal or trade name.")
+        current_url = (browser.current_url or "").lower()
+        if "/services/searchtp" in current_url and "/services/auth/searchtp" not in current_url:
+            raise RuntimeError("GST Portal login has expired. Close this session and use the CAPTCHA lookup.")
+        time.sleep(0.3)
+    raise RuntimeError("GST Portal did not return a result for this GSTIN in time.")
+
 
 def start_lookup(session_id: str, gstin: str) -> bytes:
     """Show the CAPTCHA for a GSTIN, reusing the user's browser session when possible."""

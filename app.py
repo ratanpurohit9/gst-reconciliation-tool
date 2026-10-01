@@ -2267,6 +2267,16 @@ if st.session_state.app_stage == 'setup':
                         _sid = st.session_state.get(_sid_key)
                         _period_key = "backend_gstr2b_periods"
                         _out_key = "backend_gstr2b_output"
+                        if _sid and st.session_state.get("backend_gstr2b_authenticated"):
+                            _session_spacer, _session_close_col = st.columns([5, 1])
+                            with _session_spacer:
+                                st.success("GST Portal session is active and will stay open for taxpayer name lookups.")
+                            with _session_close_col:
+                                if st.button("🔒 Close Session", key="backend_gstr2b_close_top", use_container_width=True):
+                                    _g2b.close_session(_sid)
+                                    for _key in (_sid_key, _period_key, "backend_gstr2b_challenge_image", "backend_gstr2b_authenticated"):
+                                        st.session_state.pop(_key, None)
+                                    st.rerun()
                         if not _sid:
                             _year_choices = [str(y) for y in range(2020, 2032)]
                             with st.form("backend_gstr2b_login_form"):
@@ -2385,9 +2395,8 @@ if st.session_state.app_stage == 'setup':
                                         )
                                         st.session_state[_out_key] = _data
                                         st.session_state["backend_gstr2b_summary"] = _summary
-                                        _g2b.close_session(_sid)
-                                        st.session_state.pop(_sid_key, None)
-                                        st.session_state["backend_gstr2b_authenticated"] = False
+                                        # Keep the authenticated portal browser alive for taxpayer name lookups.
+                                        st.session_state["backend_gstr2b_authenticated"] = True
                                         _download_status.update(label="GSTR-2B workbook is ready", state="complete", expanded=False)
                                         st.rerun()
                                     except Exception as _download_error:
@@ -2411,11 +2420,6 @@ if st.session_state.app_stage == 'setup':
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 key="backend_gstr2b_download_file_ready",
                             )
-                        if _sid and st.button("Cancel GST Portal session", key="backend_gstr2b_cancel"):
-                            _g2b.close_session(_sid)
-                            for _key in (_sid_key, _period_key, _out_key, "backend_gstr2b_challenge_image", "backend_gstr2b_authenticated"):
-                                st.session_state.pop(_key, None)
-                            st.rerun()
                     except Exception as _backend_import_error:
                         st.error(f"The server-side GST Portal downloader is unavailable: {_backend_import_error}")
 
@@ -3356,16 +3360,37 @@ elif st.session_state.app_stage == 'results':
 
         # ── STEP 1: NAME UPDATE (only if unknowns exist and not skipped) ────
         if _unknown_in_hub and not _show_downloads:
-            st.markdown(f"""
-            <div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:12px;padding:16px 20px;margin-bottom:12px">
-              <div style="font-size:14px;font-weight:800;color:#92400E;margin-bottom:4px">
-                Missing Party Names - {len(_unknown_in_hub)} unique GSTINs
-              </div>
-              <div style="font-size:12px;color:#78350F;line-height:1.6">
-                B2B and CDNR missing names are combined here before reports are generated.
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
+            _hub_head, _hub_close_col = st.columns([5, 1])
+            with _hub_head:
+                st.markdown(f"""
+                <div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:12px;padding:16px 20px;margin-bottom:12px">
+                  <div style="font-size:14px;font-weight:800;color:#92400E;margin-bottom:4px">
+                    Missing Party Names - {len(_unknown_in_hub)} unique GSTINs
+                  </div>
+                  <div style="font-size:12px;color:#78350F;line-height:1.6">
+                    B2B and CDNR missing names are combined here before reports are generated.
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+            with _hub_close_col:
+                _active_portal_sid = st.session_state.get("backend_gstr2b_session_id")
+                if _active_portal_sid and st.session_state.get("backend_gstr2b_authenticated"):
+                    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                    if st.button("🔒 Close Session", key="hub_close_gst_portal_session", use_container_width=True):
+                        try:
+                            from tools import gstr2b_backend as _g2b_close
+                            _g2b_close.close_session(_active_portal_sid)
+                        except Exception:
+                            pass
+                        for _session_key in ("backend_gstr2b_session_id", "backend_gstr2b_periods", "backend_gstr2b_challenge_image", "backend_gstr2b_authenticated"):
+                            st.session_state.pop(_session_key, None)
+                        try:
+                            from tools import gst_name_lookup as _gst_lookup_close
+                            _gst_lookup_close.close_lookup(st.session_state.get("hub_name_lookup_session"))
+                        except Exception:
+                            pass
+                        st.session_state["hub_name_lookup_success"] = "GST Portal session closed."
+                        st.rerun()
 
             # ── TRUE SPREADSHEET — st.data_editor ──────────────────────────
             _name_tbl = pd.DataFrame({
@@ -3399,10 +3424,17 @@ elif st.session_state.app_stage == 'results':
             </script>
             """, height=40)
             st.code(_gst_copy_text, language=None)
-            st.caption(
-                "Select a GSTIN below to open the official GST search in the app. Enter the CAPTCHA yourself; "
-                "the returned trade name (or legal name when trade name is unavailable) will fill Party Name."
+            _has_logged_in_portal = bool(
+                st.session_state.get("backend_gstr2b_session_id")
+                and st.session_state.get("backend_gstr2b_authenticated")
             )
+            if _has_logged_in_portal:
+                st.caption("Logged-in GST Portal session is active. Select a GSTIN and the app will fetch its name directly without a CAPTCHA.")
+            else:
+                st.caption(
+                    "Select a GSTIN below to open the official GST search. Enter the CAPTCHA yourself; "
+                    "the returned trade name (or legal name when trade name is unavailable) will fill Party Name."
+                )
 
             _edited_names = st.data_editor(
                 _name_tbl,
@@ -3445,6 +3477,18 @@ elif st.session_state.app_stage == 'results':
                 if st.button("🔎 Get name from GST Portal", key="hub_start_name_lookup", use_container_width=True):
                     try:
                         from tools import gst_name_lookup as _gst_name_lookup
+                        _portal_sid = st.session_state.get("backend_gstr2b_session_id")
+                        _portal_browser = None
+                        if _portal_sid and st.session_state.get("backend_gstr2b_authenticated"):
+                            from tools import gstr2b_backend as _g2b_lookup
+                            _portal_browser = _g2b_lookup.get_session_browser(_portal_sid)
+                        if _portal_browser is not None:
+                            _name_result = _gst_name_lookup.lookup_authenticated_name(_portal_browser, _lookup_target)
+                            st.session_state[f"cdnr_name_{_lookup_target}"] = _name_result
+                            st.session_state["hub_name_lookup_revision"] = st.session_state.get("hub_name_lookup_revision", 0) + 1
+                            st.session_state["hub_name_lookup_image"] = None
+                            st.session_state["hub_name_lookup_success"] = f"Party Name updated from GST Portal: {_name_result}"
+                            st.rerun()
                         _lookup_id = st.session_state.get("hub_name_lookup_session") or f"hub-name-{uuid.uuid4().hex}"
                         _lookup_image = _gst_name_lookup.start_lookup(_lookup_id, _lookup_target)
                         st.session_state["hub_name_lookup_session"] = _lookup_id
@@ -3453,7 +3497,7 @@ elif st.session_state.app_stage == 'results':
                         st.session_state["hub_name_lookup_note"] = ""
                         st.session_state["hub_name_lookup_attempt"] = 0
                     except Exception as _lookup_error:
-                        st.session_state["hub_name_lookup_note"] = f"Could not open GST taxpayer search: {_lookup_error}"
+                        st.session_state["hub_name_lookup_note"] = f"Could not fetch name from the logged-in GST Portal: {_lookup_error}"
 
             _lookup_image = st.session_state.get("hub_name_lookup_image")
             _lookup_gstin = st.session_state.get("hub_name_lookup_gstin")

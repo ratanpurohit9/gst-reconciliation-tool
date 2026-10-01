@@ -262,6 +262,12 @@ def download_periods(session_id: str, months: list[tuple[str, str]], quarterly: 
         description += " Some periods were skipped: " + "; ".join(errors)
     return data, description
 
+def get_session_browser(session_id: str):
+    """Return the live browser for an authenticated session, if it still exists."""
+    state = _sessions.get(session_id)
+    return state.get("driver") if state else None
+
+
 def close_session(session_id: str) -> None:
     state = _sessions.pop(session_id, None)
     if not state:
