@@ -24,6 +24,7 @@ ROLE_ALIASES = {
     "Amount": ("invoice value", "total invoice value", "total value", "document value", "total amount", "invoice amount", "gross amount"),
     "Name of Party": ("party name", "recipient name", "to trade name", "customer name", "receiver name", "name"),
     "Status": ("status", "eway status", "e-way bill status", "ewb status"),
+    "Invoice Type": ("invoice type", "type of invoice"),
 }
 CANONICAL_COLUMNS = ["GSTIN", "Name of Party", "Invoice Number", "Invoice Date",
                      "Taxable Value", "IGST", "CGST", "SGST", "Cess", "Invoice Value"]
@@ -118,7 +119,7 @@ def _map_side(df, side, key):
     return canonical[CANONICAL_COLUMNS].reset_index(drop=True)
 
 
-def _labels(result):
+def _labels(result, mode="sales"):
     frame = result.copy()
     status_col = "Recon_Status" if "Recon_Status" in frame.columns else None
     if status_col:
@@ -130,8 +131,8 @@ def _labels(result):
             "Suggestion": "Suggested match — review",
             "Suggestion (Group Match)": "Suggested group match — review",
             "Manually Linked": "Manually linked — review",
-            "Invoices Not in GSTR-2B": "In Sales Register — no E-Way Bill match",
-            "Invoices Not in Purchase Books": "In E-Way Bill report — no Sales Register match",
+            "Invoices Not in GSTR-2B": ("In GSTR-1 B2B — no active E-Way Bill" if mode == "gstr1" else "In Sales Register — no active E-Way Bill"),
+            "Invoices Not in Purchase Books": ("In active E-Way Bill report — not in GSTR-1 B2B" if mode == "gstr1" else "In active E-Way Bill report — not in Sales Register"),
         }).fillna(frame[status_col].astype(str))
     return frame
 
@@ -148,22 +149,33 @@ def _xlsx(result, summary):
     return output.getvalue()
 
 
-def render_module6():
-    st.title("Module 06 · E-Way Bill vs Sales Register")
-    st.caption("Manual portal login and CAPTCHA. Download the official monthly report, then upload it here with your Sales Register.")
-    if st.button("← Dashboard", key="m6_dashboard"):
+def render_module6(mode="sales"):
+    is_gstr1 = mode == "gstr1"
+    module_no = "03" if is_gstr1 else "06"
+    prefix = "m3" if is_gstr1 else "m6"
+    left_label = "GSTR-1 B2B" if is_gstr1 else "Sales Register"
+    left_upload_label = "Upload GSTR-1 workbook (B2B)" if is_gstr1 else "Upload Sales Register"
+    result_key = f"module{module_no}_results"
+
+    if is_gstr1:
+        st.title("Module 03 · GSTR-1 B2B vs E-Way Bill")
+        st.caption("Compare filed GSTR-1 B2B invoices against active outward E-Way Bills using the existing reconciliation rules.")
+    else:
+        st.title("Module 06 · E-Way Bill vs Sales Register")
+        st.caption("Manual portal login and CAPTCHA. Download the official monthly report, then upload it here with your Sales Register.")
+    if st.button("← Dashboard", key=f"{prefix}_dashboard"):
         st.session_state["show_dashboard"] = True
         st.session_state["app_stage"] = "setup"
-        st.session_state.pop("module6_results", None)
+        st.session_state.pop(result_key, None)
         st.rerun()
 
     portal_col, instructions_col = st.columns([1, 2])
     with portal_col:
         st.link_button("Open official E-Way Bill portal", PORTAL_URL, type="primary", use_container_width=True)
     with instructions_col:
-        st.info("In the new tab, log in and complete the CAPTCHA yourself. Download the outward/monthly E-Way Bill Excel report, then return here. This app does not read the portal session or download files from it.")
+        st.info("Open the portal in the new tab, log in and complete CAPTCHA yourself. Download the outward/monthly E-Way Bill Excel report, then return and upload it here. The app does not automate login or CAPTCHA.")
 
-    saved = st.session_state.get("module6_results")
+    saved = st.session_state.get(result_key)
     if saved:
         frame = saved["frame"]
         st.success(f"Reconciliation complete · {len(frame):,} rows · amount tolerance ₹{saved['tolerance']:,.2f}")
@@ -171,42 +183,58 @@ def render_module6():
         st.dataframe(summary, use_container_width=True, hide_index=True)
         st.caption("Showing up to five example rows.")
         st.dataframe(frame.head(5), use_container_width=True, hide_index=True)
-        st.download_button("Download E-Way Bill vs Sales reconciliation", _xlsx(frame, summary),
-                           file_name="EWayBill_vs_Sales_Reconciliation.xlsx",
+        report_label = "GSTR-1 B2B vs E-Way Bill" if is_gstr1 else "E-Way Bill vs Sales"
+        file_label = "GSTR1_B2B_vs_EWayBill" if is_gstr1 else "EWayBill_vs_Sales"
+        st.download_button(f"Download {report_label} reconciliation", _xlsx(frame, summary),
+                           file_name=f"{file_label}_Reconciliation.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                            type="primary", use_container_width=True)
-        if st.button("Start another reconciliation", key="m6_reset"):
-            st.session_state.pop("module6_results", None)
+        if st.button("Start another reconciliation", key=f"{prefix}_reset"):
+            st.session_state.pop(result_key, None)
             st.rerun()
         return
 
-    sales_file = st.file_uploader("Upload Sales Register", type=["xlsx", "csv"], key="m6_sales")
+    left_file = st.file_uploader(left_upload_label, type=["xlsx", "csv"], key=f"{prefix}_left")
     eway_files = st.file_uploader("Upload monthly E-Way Bill Excel file(s)", type=["xlsx", "csv"],
-                                  accept_multiple_files=True, key="m6_eway")
-    if not sales_file or not eway_files:
-        st.info("Upload the Sales Register and one or more monthly E-Way Bill reports to continue.")
+                                  accept_multiple_files=True, key=f"{prefix}_eway")
+    if not left_file or not eway_files:
+        st.info(f"Upload the {left_label} workbook and one or more monthly E-Way Bill reports to continue.")
         return
 
     try:
-        sales_sheet = st.selectbox("Sales Register sheet", _sheets(sales_file), key="m6_sales_sheet")
-        sales_df = _load_with_header(sales_file, sales_sheet, "m6_sales")
-        st.caption(f"Sales Register preview · {len(sales_df):,} rows")
-        st.dataframe(sales_df.head(5), use_container_width=True, hide_index=True)
-        with st.expander("Map Sales Register columns", expanded=True):
-            sales = _map_side(sales_df, "Sales Register", "m6_sales_map")
+        left_sheets = _sheets(left_file)
+        default_sheet = 0
+        if is_gstr1:
+            for candidate in ("b2b,sez,de", "b2b", "b2b invoices"):
+                match = next((i for i, name in enumerate(left_sheets) if name.strip().casefold() == candidate), None)
+                if match is not None:
+                    default_sheet = match
+                    break
+        left_sheet = st.selectbox(f"{left_label} sheet", left_sheets, index=default_sheet, key=f"{prefix}_left_sheet")
+        left_df = _load_with_header(left_file, left_sheet, f"{prefix}_left")
+        if is_gstr1:
+            type_col = _guess_column(left_df.columns, "Invoice Type")
+            if type_col:
+                b2b_mask = left_df[type_col].astype(str).str.contains("B2B", case=False, na=False)
+                left_df = left_df.loc[b2b_mask].copy()
+                st.caption(f"B2B-only filter using '{type_col}': {len(left_df):,} invoice row(s) retained.")
+            else:
+                st.warning("Could not find an Invoice Type column to isolate B2B rows. Select a B2B-only sheet or provide a workbook with an Invoice Type column.")
+        st.caption(f"{left_label} preview · {len(left_df):,} rows")
+        st.dataframe(left_df.head(5), use_container_width=True, hide_index=True)
+        with st.expander(f"Map {left_label} columns", expanded=True):
+            left = _map_side(left_df, left_label, f"{prefix}_left_map")
 
         eway_parts = []
         for i, upload in enumerate(eway_files):
             with st.expander(f"E-Way Bill report: {html.escape(upload.name)}", expanded=i == 0):
-                sheet = st.selectbox(f"Sheet in {upload.name}", _sheets(upload), key=f"m6_eway_sheet_{i}")
-                raw_df = _load_with_header(upload, sheet, f"m6_eway_{i}")
+                sheet = st.selectbox(f"Sheet in {upload.name}", _sheets(upload), key=f"{prefix}_eway_sheet_{i}")
+                raw_df = _load_with_header(upload, sheet, f"{prefix}_eway_{i}")
                 status_guess = _guess_column(raw_df.columns, "Status")
                 status_options = ["(no status filter)"] + list(raw_df.columns)
                 status_index = status_options.index(status_guess) if status_guess in status_options else 0
-                status_col = st.selectbox(
-                    "E-Way Bill status column (optional)", status_options,
-                    index=status_index, key=f"m6_eway_status_{i}"
-                )
+                status_col = st.selectbox("E-Way Bill status column (optional)", status_options,
+                                          index=status_index, key=f"{prefix}_eway_status_{i}")
                 if status_col != "(no status filter)":
                     status_values = raw_df[status_col].astype(str).str.strip().str.casefold()
                     active_mask = status_values.eq("active")
@@ -216,22 +244,25 @@ def render_module6():
                     st.warning("No status column selected. Cancelled bills may be included; map a status column if present.")
                 st.caption(f"Active report preview · {len(raw_df):,} rows")
                 st.dataframe(raw_df.head(5), use_container_width=True, hide_index=True)
-                mapped = _map_side(raw_df, "E-Way Bill report", f"m6_eway_map_{i}")
+                mapped = _map_side(raw_df, "E-Way Bill report", f"{prefix}_eway_map_{i}")
                 if mapped is not None:
                     eway_parts.append(mapped)
 
-        tolerance = st.number_input("Invoice amount tolerance (₹)", min_value=0.0, value=5.0, step=1.0, key="m6_tolerance")
-        smart = st.checkbox("Enable existing Smart Match rules", value=True, key="m6_smart")
-        st.caption("The existing matcher checks GSTIN, invoice number, date, and the selected amount field. Verify suggested and smart matches before acting on them.")
-        if st.button("Run E-Way Bill vs Sales reconciliation", type="primary", use_container_width=True, key="m6_run"):
-            if sales is None or len(eway_parts) != len(eway_files):
-                st.error("Complete all required column mappings before running reconciliation.")
+        tolerance = st.number_input("Invoice amount tolerance (₹)", min_value=0.0, value=5.0, step=1.0, key=f"{prefix}_tolerance")
+        smart = st.checkbox("Enable existing Smart Match rules", value=True, key=f"{prefix}_smart")
+        st.caption("The existing matcher checks GSTIN, invoice number, date, and the selected invoice amount. Review smart and suggested matches before acting on them.")
+        if st.button(f"Run Module {module_no} reconciliation", type="primary", use_container_width=True, key=f"{prefix}_run"):
+            if left is None or len(eway_parts) != len(eway_files) or (is_gstr1 and len(left_df) == 0):
+                st.error("Complete the column mappings and confirm B2B rows are available before running reconciliation.")
                 return
             eway = pd.concat(eway_parts, ignore_index=True)
+            if eway.empty:
+                st.error("No active E-Way Bill rows remain after the status filter.")
+                return
             with st.spinner("Applying the existing reconciliation rules..."):
-                result, _, _ = run_reconciliation(sales, eway, tolerance, [], smart)
-            result = _labels(result)
-            st.session_state["module6_results"] = {"frame": result, "tolerance": tolerance, "smart": smart}
+                result, _, _ = run_reconciliation(left, eway, tolerance, [], smart)
+            result = _labels(result, mode=mode)
+            st.session_state[result_key] = {"frame": result, "tolerance": tolerance, "smart": smart}
             st.rerun()
     except Exception as exc:
         st.error(f"Could not prepare these workbooks: {exc}")
