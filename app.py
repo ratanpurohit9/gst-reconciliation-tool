@@ -2257,63 +2257,59 @@ if st.session_state.app_stage == 'setup':
                 st.caption("Download from GST Portal · XLSX, CSV supported · multiple periods/files allowed")
                 with st.expander("Download GSTR-2B from the GST Portal on this PC"):
                     st.caption(
-                        "The reconciliation app is hosted in your browser and cannot open a browser on your PC. "
-                        "Use this desktop helper when direct filing access is unavailable: it opens Chrome, "
-                        "then waits for you to enter the portal CAPTCHA/OTP and finish login."
+                        "One-time setup: download the launcher ZIP, extract it, and run "
+                        "install_gstr2b_launcher.bat. After setup, the button below opens the downloader "
+                        "on this PC. Chrome will ask you to complete CAPTCHA/OTP; the merged workbook "
+                        "is saved in your selected local folder for re-upload here."
                     )
-                    _helper_path = os.path.join(
-                        os.path.dirname(os.path.abspath(__file__)), "tools", "gstr2b_downloader.py"
-                    )
-                    _helper_req_path = os.path.join(
-                        os.path.dirname(os.path.abspath(__file__)), "requirements-downloader.txt"
-                    )
-                    if os.path.exists(_helper_path) and os.path.exists(_helper_req_path):
+                    _helper_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools")
+                    _helper_files = {
+                        "gstr2b_downloader.py": os.path.join(_helper_dir, "gstr2b_downloader.py"),
+                        "requirements-downloader.txt": os.path.join(
+                            os.path.dirname(os.path.abspath(__file__)), "requirements-downloader.txt"
+                        ),
+                        "install_gstr2b_launcher.py": os.path.join(
+                            _helper_dir, "install_gstr2b_launcher.py"
+                        ),
+                        "install_gstr2b_launcher.bat": os.path.join(
+                            _helper_dir, "install_gstr2b_launcher.bat"
+                        ),
+                    }
+                    if all(os.path.isfile(_path) for _path in _helper_files.values()):
                         _helper_bundle = io.BytesIO()
                         with zipfile.ZipFile(_helper_bundle, "w", zipfile.ZIP_DEFLATED) as _zip:
-                            _zip.write(_helper_path, "gstr2b_downloader.py")
-                            _zip.write(_helper_req_path, "requirements-downloader.txt")
-                            _zip.writestr(
-                                "run_gstr2b_downloader.bat",
-                                "@echo off\r\n"
-                                "cd /d %~dp0\r\n"
-                                "where py >nul 2>nul\r\n"
-                                "if not errorlevel 1 (\r\n"
-                                "  py -m pip install -r requirements-downloader.txt\r\n"
-                                "  if errorlevel 1 goto failed\r\n"
-                                "  py gstr2b_downloader.py\r\n"
-                                ") else (\r\n"
-                                "  python -m pip install -r requirements-downloader.txt\r\n"
-                                "  if errorlevel 1 goto failed\r\n"
-                                "  python gstr2b_downloader.py\r\n"
-                                ")\r\n"
-                                "pause\r\n"
-                                "exit /b\r\n"
-                                ":failed\r\n"
-                                "echo Could not install dependencies. Check Python and internet access.\r\n"
-                                "pause\r\n"
-                            )
+                            for _zip_name, _path in _helper_files.items():
+                                _zip.write(_path, _zip_name)
                             _zip.writestr(
                                 "README.txt",
-                                "GSTR-2B desktop download helper\n\n"
-                                "1. Extract this ZIP on the Windows PC where you want the reports saved.\n"
-                                "2. Double-click run_gstr2b_downloader.bat. It installs the required Python packages.\n"
-                                "3. Select GSTR-2B, enter the requested period and credentials, and complete CAPTCHA/OTP yourself in Chrome.\n"
-                                "4. The helper saves period Excel files and a merged workbook in the output folder you choose.\n"
-                                "5. Return to this app and upload the merged workbook in GSTR-2B Portal Data.\n\n"
-                                "The helper remembers usernames only. It does not save portal passwords.\n"
-                                "Python 3 and Google Chrome must be installed on the PC.\n"
+                                "GSTR-2B local launcher setup\n\n"
+                                "ONE TIME: Extract this ZIP, then double-click install_gstr2b_launcher.bat. "
+                                "It installs the Python packages in a private folder under your Windows profile "
+                                "and registers the Module 2 launch button for your account.\n\n"
+                                "AFTER SETUP: Return to Module 2 and click Run Local GSTR-2B Downloader. "
+                                "If Chrome asks whether to open the local app, allow it. Complete portal CAPTCHA/OTP yourself.\n\n"
+                                "The helper saves downloads under Desktop\\GSTR2B_Downloads by default. "
+                                "Upload the merged workbook back into Module 2. Usernames only may be remembered; "
+                                "passwords are never saved.\n\n"
+                                "Requires Windows, Python 3, and Google Chrome.\n"
                             )
                         st.download_button(
-                            "📥 Download Desktop GSTR-2B Helper",
+                            "📦 Download One-Time Local Launcher Setup",
                             data=_helper_bundle.getvalue(),
-                            file_name="GSTR2B_Desktop_Downloader.zip",
+                            file_name="GSTR2B_Local_Launcher_Setup.zip",
                             mime="application/zip",
                             use_container_width=True,
-                            key="download_gstr2b_desktop_helper",
+                            key="download_gstr2b_launcher_setup",
+                        )
+                        st.link_button(
+                            "▶ Run Local GSTR-2B Downloader",
+                            "gst2b-downloader://start",
+                            help="Available after the one-time Windows launcher setup. Your browser may ask to open the local app.",
+                            use_container_width=True,
+                            type="primary",
                         )
                     else:
-                        st.warning("Desktop helper files are missing from this app build.")
-
+                        st.warning("Local downloader setup files are missing from this app build.")
                 st.markdown("</div>", unsafe_allow_html=True)
 
         if not (file_books and file_gst):

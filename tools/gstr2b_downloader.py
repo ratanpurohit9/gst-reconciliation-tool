@@ -186,7 +186,7 @@ def get_inputs():
 
     # Row 0: Service
     ttk.Label(root, text="Download").grid(row=0, column=0, sticky="w", **pad)
-    service_var = tk.StringVar(value=SERVICE_EWB)
+    service_var = tk.StringVar(value=SERVICE_2B)
     service_cb = ttk.Combobox(root, textvariable=service_var, values=[SERVICE_EWB, SERVICE_2B],
                               state="readonly", width=26)
     service_cb.grid(row=0, column=1, columnspan=3, sticky="w", **pad)
@@ -275,7 +275,7 @@ def get_inputs():
 
     # Row 8: Save to
     ttk.Label(root, text="Save to").grid(row=8, column=0, sticky="w", **pad)
-    out_var = tk.StringVar(value=os.path.join(os.path.expanduser("~"), "Desktop", "GST_Downloads"))
+    out_var = tk.StringVar(value=os.path.join(os.path.expanduser("~"), "Desktop", "GSTR2B_Downloads"))
     ttk.Entry(root, textvariable=out_var, width=31).grid(row=8, column=1, columnspan=2, **pad)
     ttk.Button(root, text="Browse",
                command=lambda: out_var.set(filedialog.askdirectory() or out_var.get()))\
@@ -302,6 +302,7 @@ def get_inputs():
             type_cb.config(state="readonly")
             out_var.set(os.path.join(os.path.expanduser("~"), "Desktop", "EWB_Downloads"))
     service_cb.bind("<<ComboboxSelected>>", on_service)
+    on_service()
 
     def start():
         u = user_var.get().strip()
