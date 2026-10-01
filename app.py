@@ -2256,58 +2256,83 @@ if st.session_state.app_stage == 'setup':
                 )
                 st.caption("Download from GST Portal · XLSX, CSV supported · multiple periods/files allowed")
                 with st.expander("Download GSTR-2B from the GST Portal (runs on this app)"):
-                    st.caption("Python runs on the app server, so no local installation is needed. Enter your GST Portal credentials, then complete each CAPTCHA/OTP shown here. The merged Excel downloads to your device.")
+                    st.caption(
+                        "The downloader runs on the app server. Enter your GST Portal credentials, "
+                        "then complete each CAPTCHA/OTP shown below. The merged Excel is returned "
+                        "as a normal download to your device. Credentials are used for this session only."
+                    )
                     try:
                         from tools import gstr2b_backend as _g2b
-                        _sid_key, _out_key, _period_key = "backend_gstr2b_session_id", "backend_gstr2b_output", "backend_gstr2b_periods"
+                        _sid_key = "backend_gstr2b_session_id"
                         _sid = st.session_state.get(_sid_key)
+                        _period_key = "backend_gstr2b_periods"
+                        _out_key = "backend_gstr2b_output"
                         if not _sid:
-                            _fys = [f"{y}-{str(y+1)[-2:]}" for y in range(2020, 2031)]
+                            _fy_choices = [f"{y}-{str(y+1)[-2:]}" for y in range(2020, 2031)]
                             with st.form("backend_gstr2b_login_form"):
-                                _user = st.text_input("GST Portal username")
-                                _password = st.text_input("GST Portal password", type="password")
-                                _fy = st.selectbox("Financial year", _fys, index=_fys.index("2025-26"))
-                                _months = st.multiselect("Months to download", _g2b.core.MONTHS)
+                                _gst_user = st.text_input("GST Portal username")
+                                _gst_password = st.text_input("GST Portal password", type="password")
+                                _fy = st.selectbox("Financial year", _fy_choices, index=_fy_choices.index("2025-26") if "2025-26" in _fy_choices else 0)
+                                _months = st.multiselect("Months to download", _g2b.core.MONTHS, default=[])
                                 _quarterly = st.checkbox("Client files GSTR-2B quarterly (QRMP)")
-                                _start = st.form_submit_button("Start secure portal session", type="primary")
-                            if _start:
-                                if not _user.strip() or not _password or not _months:
-                                    st.error("Enter username, password, and at least one month.")
+                                _start_login = st.form_submit_button("Start secure portal session", type="primary")
+                            if _start_login:
+                                if not _gst_user.strip() or not _gst_password or not _months:
+                                    st.error("Enter the portal username, password, and at least one month.")
                                 else:
-                                    _new_sid = uuid.uuid4().hex
+                                    _sid = uuid.uuid4().hex
                                     try:
-                                        _challenge = _g2b.start_login(_new_sid, _user, _password)
+                                        _challenge_image = _g2b.start_login(_sid, _gst_user, _gst_password)
                                         _fy_start = int(_fy[:4])
-                                        _periods = [(m, str(_fy_start if _g2b.core.MONTHS.index(m) >= 3 else _fy_start + 1)) for m in _months]
-                                        _periods.sort(key=lambda x: (int(x[1]), _g2b.core.MONTHS.index(x[0])))
-                                        st.session_state[_sid_key] = _new_sid
-                                        st.session_state[_period_key] = _periods
+                                        _gstr2b_periods = [
+                                            (m, str(_fy_start if _g2b.core.MONTHS.index(m) >= 3 else _fy_start + 1))
+                                            for m in _months
+                                        ]
+                                        _gstr2b_periods.sort(key=lambda p: (int(p[1]), _g2b.core.MONTHS.index(p[0])))
+                                        st.session_state[_sid_key] = _sid
+                                        st.session_state[_period_key] = _gstr2b_periods
                                         st.session_state["backend_gstr2b_quarterly"] = _quarterly
-                                        st.session_state["backend_gstr2b_challenge_image"] = _challenge
+                                        st.session_state["backend_gstr2b_challenge_image"] = _challenge_image
                                         st.session_state["backend_gstr2b_authenticated"] = False
                                         st.session_state.pop(_out_key, None)
                                         st.rerun()
-                                    except Exception as _e:
-                                        st.error(f"Could not start server-side GST Portal browser: {_e}")
+                                    except Exception as _start_error:
+                                        st.error(f"Could not start the GST Portal browser on the server: {_start_error}")
                         elif not st.session_state.get("backend_gstr2b_authenticated"):
-                            st.info("Complete the CAPTCHA shown below. After login, enter an OTP here if the portal requests one.")
-                            st.image(st.session_state.get("backend_gstr2b_challenge_image"), caption="GST Portal running on the app server", use_container_width=True)
-                            with st.form("backend_gstr2b_challenge_form"):
-                                _code = st.text_input("CAPTCHA or OTP")
-                                _submit = st.form_submit_button("Submit code to GST Portal", type="primary")
-                            if _submit and _code.strip():
-                                _ok, _image, _note = _g2b.submit_portal_code(_sid, _code)
-                                st.session_state["backend_gstr2b_challenge_image"] = _image
-                                st.session_state["backend_gstr2b_authenticated"] = _ok
-                                st.session_state["backend_gstr2b_login_note"] = _note
+                            st.info("The portal screenshot is a preview. Type the CAPTCHA/OTP from it in the input box below. Use Refresh CAPTCHA if the image is blank or unclear.")
+                            st.image(st.session_state.get("backend_gstr2b_challenge_image"), caption="GST Portal challenge running on the app server", use_container_width=True)
+                            if st.button("↻ Refresh CAPTCHA", key="backend_gstr2b_refresh_captcha"):
+                                try:
+                                    st.session_state["backend_gstr2b_challenge_image"] = _g2b.refresh_captcha(_sid)
+                                    st.session_state["backend_gstr2b_login_note"] = "CAPTCHA refresh requested. Enter the new characters shown above."
+                                except Exception as _refresh_error:
+                                    st.session_state["backend_gstr2b_login_note"] = f"Could not refresh CAPTCHA: {_refresh_error}"
                                 st.rerun()
-                            if st.session_state.get("backend_gstr2b_login_note"): st.info(st.session_state["backend_gstr2b_login_note"])
+                            with st.form("backend_gstr2b_challenge_form"):
+                                _portal_code = st.text_input("Enter the visible CAPTCHA or OTP")
+                                _submit_code = st.form_submit_button("Submit code to GST Portal", type="primary")
+                            if _submit_code:
+                                if not _portal_code.strip():
+                                    st.warning("Enter the CAPTCHA or OTP shown above.")
+                                else:
+                                    _logged_in, _image, _login_note = _g2b.submit_portal_code(_sid, _portal_code)
+                                    st.session_state["backend_gstr2b_challenge_image"] = _image
+                                    st.session_state["backend_gstr2b_authenticated"] = _logged_in
+                                    st.session_state["backend_gstr2b_login_note"] = _login_note
+                                    st.rerun()
+                            if st.session_state.get("backend_gstr2b_login_note"):
+                                st.info(st.session_state["backend_gstr2b_login_note"])
                         else:
-                            st.success("GST Portal login completed.")
+                            st.success("GST Portal login completed. Ready to fetch the selected GSTR-2B periods.")
                             if st.button("Download and prepare merged GSTR-2B Excel", type="primary", key="backend_gstr2b_download"):
                                 with st.status("Starting GST Portal download…", expanded=True) as _download_status:
                                     try:
-                                        _data, _summary = _g2b.download_periods(_sid, st.session_state[_period_key], quarterly=st.session_state.get("backend_gstr2b_quarterly", False), progress=_download_status.write)
+                                        _data, _summary = _g2b.download_periods(
+                                            _sid,
+                                            st.session_state[_period_key],
+                                            quarterly=st.session_state.get("backend_gstr2b_quarterly", False),
+                                            progress=_download_status.write,
+                                        )
                                         st.session_state[_out_key] = _data
                                         st.session_state["backend_gstr2b_summary"] = _summary
                                         _g2b.close_session(_sid)
@@ -2315,17 +2340,35 @@ if st.session_state.app_stage == 'setup':
                                         st.session_state["backend_gstr2b_authenticated"] = False
                                         _download_status.update(label="GSTR-2B workbook is ready", state="complete", expanded=False)
                                         st.rerun()
-                                    except Exception as _e:
+                                    except Exception as _download_error:
                                         _download_status.update(label="GSTR-2B download failed", state="error", expanded=True)
-                                        st.error(f"GSTR-2B download failed: {_e}")
-                        if st.session_state.get(_out_key):
+                                        st.error(f"GSTR-2B download failed: {_download_error}")
+                            if st.session_state.get(_out_key):
+                                st.success(st.session_state.get("backend_gstr2b_summary", "Merged workbook is ready."))
+                                st.download_button(
+                                    "Download merged GSTR-2B Excel",
+                                    data=st.session_state[_out_key],
+                                    file_name="GSTR2B_MERGED.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    key="backend_gstr2b_download_file",
+                                )
+                        if st.session_state.get(_out_key) and not _sid:
                             st.success(st.session_state.get("backend_gstr2b_summary", "Merged workbook is ready."))
-                            st.download_button("Download merged GSTR-2B Excel", data=st.session_state[_out_key], file_name="GSTR2B_MERGED.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="backend_gstr2b_download_file")
+                            st.download_button(
+                                "Download merged GSTR-2B Excel",
+                                data=st.session_state[_out_key],
+                                file_name="GSTR2B_MERGED.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="backend_gstr2b_download_file_ready",
+                            )
                         if _sid and st.button("Cancel GST Portal session", key="backend_gstr2b_cancel"):
                             _g2b.close_session(_sid)
-                            for _key in (_sid_key, _period_key, _out_key, "backend_gstr2b_challenge_image", "backend_gstr2b_authenticated", "backend_gstr2b_login_note"): st.session_state.pop(_key, None)
+                            for _key in (_sid_key, _period_key, _out_key, "backend_gstr2b_challenge_image", "backend_gstr2b_authenticated"):
+                                st.session_state.pop(_key, None)
                             st.rerun()
-                    except Exception as _e: st.error(f"Server-side downloader unavailable: {_e}")
+                    except Exception as _backend_import_error:
+                        st.error(f"The server-side GST Portal downloader is unavailable: {_backend_import_error}")
+
                 st.markdown("</div>", unsafe_allow_html=True)
 
         if not (file_books and file_gst):
