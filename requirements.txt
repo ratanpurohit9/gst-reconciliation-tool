@@ -7,3 +7,4 @@ xlsxwriter
 openpyxl
 weasyprint>=62,<71
 lxml
+selenium>=4.20

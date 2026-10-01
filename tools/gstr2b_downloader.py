@@ -26,10 +26,13 @@ import os
 import shutil
 import sys
 import time
-import tkinter as tk
+try:
+    import tkinter as tk
 import zipfile
 from datetime import datetime
-from tkinter import filedialog, messagebox, ttk
+    from tkinter import filedialog, messagebox, ttk
+except ImportError:
+    tk = filedialog = messagebox = ttk = None
 
 import pandas as pd
 from openpyxl.utils import get_column_letter

@@ -2255,61 +2255,74 @@ if st.session_state.app_stage == 'setup':
                     help="Upload one or more GSTR-2B files downloaded from GST Portal in NIC format."
                 )
                 st.caption("Download from GST Portal · XLSX, CSV supported · multiple periods/files allowed")
-                with st.expander("Download GSTR-2B from the GST Portal on this PC"):
-                    st.caption(
-                        "One-time setup: download the launcher ZIP, extract it, and run "
-                        "install_gstr2b_launcher.bat. After setup, the button below opens the downloader "
-                        "on this PC. Chrome will ask you to complete CAPTCHA/OTP; the merged workbook "
-                        "is saved in your selected local folder for re-upload here."
-                    )
-                    _helper_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools")
-                    _helper_files = {
-                        "gstr2b_downloader.py": os.path.join(_helper_dir, "gstr2b_downloader.py"),
-                        "requirements-downloader.txt": os.path.join(
-                            os.path.dirname(os.path.abspath(__file__)), "requirements-downloader.txt"
-                        ),
-                        "install_gstr2b_launcher.py": os.path.join(
-                            _helper_dir, "install_gstr2b_launcher.py"
-                        ),
-                        "install_gstr2b_launcher.bat": os.path.join(
-                            _helper_dir, "install_gstr2b_launcher.bat"
-                        ),
-                    }
-                    if all(os.path.isfile(_path) for _path in _helper_files.values()):
-                        _helper_bundle = io.BytesIO()
-                        with zipfile.ZipFile(_helper_bundle, "w", zipfile.ZIP_DEFLATED) as _zip:
-                            for _zip_name, _path in _helper_files.items():
-                                _zip.write(_path, _zip_name)
-                            _zip.writestr(
-                                "README.txt",
-                                "GSTR-2B local launcher setup\n\n"
-                                "ONE TIME: Extract this ZIP, then double-click install_gstr2b_launcher.bat. "
-                                "It installs the Python packages in a private folder under your Windows profile "
-                                "and registers the Module 2 launch button for your account.\n\n"
-                                "AFTER SETUP: Return to Module 2 and click Run Local GSTR-2B Downloader. "
-                                "If Chrome asks whether to open the local app, allow it. Complete portal CAPTCHA/OTP yourself.\n\n"
-                                "The helper saves downloads under Desktop\\GSTR2B_Downloads by default. "
-                                "Upload the merged workbook back into Module 2. Usernames only may be remembered; "
-                                "passwords are never saved.\n\n"
-                                "Requires Windows, Python 3, and Google Chrome.\n"
-                            )
-                        st.download_button(
-                            "📦 Download One-Time Local Launcher Setup",
-                            data=_helper_bundle.getvalue(),
-                            file_name="GSTR2B_Local_Launcher_Setup.zip",
-                            mime="application/zip",
-                            use_container_width=True,
-                            key="download_gstr2b_launcher_setup",
-                        )
-                        st.link_button(
-                            "▶ Run Local GSTR-2B Downloader",
-                            "gst2b-downloader://start",
-                            help="Available after the one-time Windows launcher setup. Your browser may ask to open the local app.",
-                            use_container_width=True,
-                            type="primary",
-                        )
-                    else:
-                        st.warning("Local downloader setup files are missing from this app build.")
+                with st.expander("Download GSTR-2B from the GST Portal (runs on this app)"):
+                    st.caption("Python runs on the app server, so no local installation is needed. Enter your GST Portal credentials, then complete each CAPTCHA/OTP shown here. The merged Excel downloads to your device.")
+                    try:
+                        from tools import gstr2b_backend as _g2b
+                        _sid_key, _out_key, _period_key = "backend_gstr2b_session_id", "backend_gstr2b_output", "backend_gstr2b_periods"
+                        _sid = st.session_state.get(_sid_key)
+                        if not _sid:
+                            _fys = [f"{y}-{str(y+1)[-2:]}" for y in range(2020, 2031)]
+                            with st.form("backend_gstr2b_login_form"):
+                                _user = st.text_input("GST Portal username")
+                                _password = st.text_input("GST Portal password", type="password")
+                                _fy = st.selectbox("Financial year", _fys, index=_fys.index("2025-26"))
+                                _months = st.multiselect("Months to download", _g2b.core.MONTHS)
+                                _quarterly = st.checkbox("Client files GSTR-2B quarterly (QRMP)")
+                                _start = st.form_submit_button("Start secure portal session", type="primary")
+                            if _start:
+                                if not _user.strip() or not _password or not _months:
+                                    st.error("Enter username, password, and at least one month.")
+                                else:
+                                    _new_sid = uuid.uuid4().hex
+                                    try:
+                                        _challenge = _g2b.start_login(_new_sid, _user, _password)
+                                        _fy_start = int(_fy[:4])
+                                        _periods = [(m, str(_fy_start if _g2b.core.MONTHS.index(m) >= 3 else _fy_start + 1)) for m in _months]
+                                        _periods.sort(key=lambda x: (int(x[1]), _g2b.core.MONTHS.index(x[0])))
+                                        st.session_state[_sid_key] = _new_sid
+                                        st.session_state[_period_key] = _periods
+                                        st.session_state["backend_gstr2b_quarterly"] = _quarterly
+                                        st.session_state["backend_gstr2b_challenge_image"] = _challenge
+                                        st.session_state["backend_gstr2b_authenticated"] = False
+                                        st.session_state.pop(_out_key, None)
+                                        st.rerun()
+                                    except Exception as _e:
+                                        st.error(f"Could not start server-side GST Portal browser: {_e}")
+                        elif not st.session_state.get("backend_gstr2b_authenticated"):
+                            st.info("Complete the CAPTCHA shown below. After login, enter an OTP here if the portal requests one.")
+                            st.image(st.session_state.get("backend_gstr2b_challenge_image"), caption="GST Portal running on the app server", use_container_width=True)
+                            with st.form("backend_gstr2b_challenge_form"):
+                                _code = st.text_input("CAPTCHA or OTP")
+                                _submit = st.form_submit_button("Submit code to GST Portal", type="primary")
+                            if _submit and _code.strip():
+                                _ok, _image, _note = _g2b.submit_portal_code(_sid, _code)
+                                st.session_state["backend_gstr2b_challenge_image"] = _image
+                                st.session_state["backend_gstr2b_authenticated"] = _ok
+                                st.session_state["backend_gstr2b_login_note"] = _note
+                                st.rerun()
+                            if st.session_state.get("backend_gstr2b_login_note"): st.info(st.session_state["backend_gstr2b_login_note"])
+                        else:
+                            st.success("GST Portal login completed.")
+                            if st.button("Download and prepare merged GSTR-2B Excel", type="primary", key="backend_gstr2b_download"):
+                                with st.spinner("Downloading selected periods on the app server…"):
+                                    try:
+                                        _data, _summary = _g2b.download_periods(_sid, st.session_state[_period_key], quarterly=st.session_state.get("backend_gstr2b_quarterly", False))
+                                        st.session_state[_out_key] = _data
+                                        st.session_state["backend_gstr2b_summary"] = _summary
+                                        _g2b.close_session(_sid)
+                                        st.session_state.pop(_sid_key, None)
+                                        st.session_state["backend_gstr2b_authenticated"] = False
+                                        st.rerun()
+                                    except Exception as _e: st.error(f"GSTR-2B download failed: {_e}")
+                        if st.session_state.get(_out_key):
+                            st.success(st.session_state.get("backend_gstr2b_summary", "Merged workbook is ready."))
+                            st.download_button("Download merged GSTR-2B Excel", data=st.session_state[_out_key], file_name="GSTR2B_MERGED.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="backend_gstr2b_download_file")
+                        if _sid and st.button("Cancel GST Portal session", key="backend_gstr2b_cancel"):
+                            _g2b.close_session(_sid)
+                            for _key in (_sid_key, _period_key, _out_key, "backend_gstr2b_challenge_image", "backend_gstr2b_authenticated", "backend_gstr2b_login_note"): st.session_state.pop(_key, None)
+                            st.rerun()
+                    except Exception as _e: st.error(f"Server-side downloader unavailable: {_e}")
                 st.markdown("</div>", unsafe_allow_html=True)
 
         if not (file_books and file_gst):
