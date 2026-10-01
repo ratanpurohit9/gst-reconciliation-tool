@@ -350,6 +350,30 @@ def submit_captcha(session_id: str, code: str) -> tuple[str | None, bytes, str]:
     return None, _captcha_image_screenshot(browser), "The portal did not return a name in time. Refresh the CAPTCHA and try again."
 
 
+def lookup_authenticated_names(browser, gstins: list[str], progress=None) -> tuple[dict[str, str], dict[str, str]]:
+    """Look up several taxpayer names sequentially in one authenticated portal session."""
+    requested = list(dict.fromkeys(str(gstin).strip().upper() for gstin in gstins if str(gstin).strip()))
+    found: dict[str, str] = {}
+    errors: dict[str, str] = {}
+    total = len(requested)
+    for index, gstin in enumerate(requested, 1):
+        if progress:
+            progress(index - 1, total, gstin, "searching")
+        try:
+            found[gstin] = lookup_authenticated_name(browser, gstin)
+            outcome = "found"
+        except Exception as exc:
+            detail = str(exc).split("Stacktrace:")[0].strip()
+            errors[gstin] = f"{type(exc).__name__}: {detail[:180]}" if detail else type(exc).__name__
+            outcome = "failed"
+        if progress:
+            progress(index, total, gstin, outcome)
+        # Keep the portal request sequence gentle and avoid parallel requests.
+        if index < total:
+            time.sleep(0.35)
+    return found, errors
+
+
 def close_lookup(session_id: str | None) -> None:
     if not session_id:
         return

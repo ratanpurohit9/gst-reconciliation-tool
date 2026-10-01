@@ -3491,6 +3491,64 @@ elif st.session_state.app_stage == 'results':
                         _party_save = ''
                     st.session_state[f'cdnr_name_{_gstin_save}'] = _party_save
 
+            _pending_name_gstins = [
+                _g for _g in _unknown_in_hub
+                if not str(st.session_state.get(f"cdnr_name_{_g}", "") or "").strip()
+            ]
+            if _has_logged_in_portal and _pending_name_gstins:
+                if st.button(
+                    f"⚡ Fetch all remaining names ({len(_pending_name_gstins)})",
+                    key="hub_fetch_all_names",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    _batch_progress = st.progress(0, text="Starting GST Portal name lookups…")
+                    try:
+                        from tools import gst_name_lookup as _gst_name_lookup
+                        from tools import gstr2b_backend as _g2b_lookup
+                        _portal_sid = st.session_state.get("backend_gstr2b_session_id")
+                        _portal_browser = _g2b_lookup.get_session_browser(_portal_sid) if _portal_sid else None
+                        if _portal_browser is None:
+                            raise RuntimeError("The logged-in GST Portal session is no longer available. Log in again.")
+                        def _update_name_batch_progress(_done, _total, _gstin, _state):
+                            _pct = int(_done * 100 / max(_total, 1))
+                            _label = f"{_state.title()}: {_gstin} ({_done}/{_total})"
+                            _batch_progress.progress(_pct, text=_label)
+                        with st.spinner(f"Fetching names for {len(_pending_name_gstins)} GSTINs…"):
+                            _found_names, _name_errors = _gst_name_lookup.lookup_authenticated_names(
+                                _portal_browser,
+                                _pending_name_gstins,
+                                progress=_update_name_batch_progress,
+                            )
+                        for _found_gstin, _found_name in _found_names.items():
+                            st.session_state[f"cdnr_name_{_found_gstin}"] = _found_name
+                        st.session_state["hub_name_lookup_revision"] = (
+                            st.session_state.get("hub_name_lookup_revision", 0) + len(_found_names)
+                        )
+                        st.session_state["hub_name_lookup_image"] = None
+                        st.session_state["hub_name_lookup_success"] = (
+                            f"Bulk lookup complete: {len(_found_names)} name(s) filled; "
+                            f"{len(_name_errors)} GSTIN(s) need review."
+                        )
+                        st.session_state["hub_name_lookup_batch_errors"] = _name_errors
+                        _batch_progress.empty()
+                        st.rerun()
+                    except Exception as _batch_error:
+                        _batch_progress.empty()
+                        _batch_detail = str(_batch_error).split("Stacktrace:")[0].strip()[:220]
+                        st.error(f"Bulk lookup could not complete: {_batch_detail or type(_batch_error).__name__}")
+
+            _lookup_batch_errors = st.session_state.pop("hub_name_lookup_batch_errors", None)
+            if _lookup_batch_errors:
+                st.warning("These GSTINs could not be fetched. Try the individual CAPTCHA lookup or enter names manually.")
+                st.dataframe(
+                    pd.DataFrame(
+                        [{"GSTIN": _gstin, "Issue": _issue} for _gstin, _issue in _lookup_batch_errors.items()]
+                    ),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
             _lookup_col, _lookup_btn_col = st.columns([2, 1])
             with _lookup_col:
                 _lookup_target = st.selectbox(
