@@ -3375,7 +3375,7 @@ elif st.session_state.app_stage == 'results':
                 'GST Portal': ['https://services.gst.gov.in/services/searchtp'] * len(_unknown_in_hub),
             })
             _gst_copy_text = "\n".join(_unknown_in_hub)
-            _hub_name_editor_key = f"hub_name_editor_{hashlib.md5(_gst_copy_text.encode('utf-8')).hexdigest()[:8]}"
+            _hub_name_editor_key = f"hub_name_editor_{hashlib.md5(_gst_copy_text.encode('utf-8')).hexdigest()[:8]}_{st.session_state.get('hub_name_lookup_revision', 0)}"
             components.html(f"""
             <button id="copy-gstin" style="border:1px solid #CBD5E1;background:#fff;border-radius:8px;
                     padding:8px 12px;font-size:12px;font-weight:800;color:#0F172A;cursor:pointer">
@@ -3394,8 +3394,8 @@ elif st.session_state.app_stage == 'results':
             """, height=40)
             st.code(_gst_copy_text, language=None)
             st.caption(
-                "For each GSTIN, open its GST Portal link, enter the GSTIN and solve the CAPTCHA. "
-                "Then type the returned trade or legal name in the Party Name column."
+                "Select a GSTIN below to open the official GST search in the app. Enter the CAPTCHA yourself; "
+                "the returned trade name (or legal name when trade name is unavailable) will fill Party Name."
             )
 
             _edited_names = st.data_editor(
@@ -3413,6 +3413,99 @@ elif st.session_state.app_stage == 'results':
                 num_rows='fixed',
                 key=_hub_name_editor_key,
             )
+
+            _lookup_success = st.session_state.pop("hub_name_lookup_success", None)
+            if _lookup_success:
+                st.success(_lookup_success)
+
+            # Preserve hand-entered names across the lookup form's reruns.
+            for _, _name_row in _edited_names.iterrows():
+                _gstin_save = str(_name_row.get('GSTIN', '')).strip().upper()
+                _party_save = str(_name_row.get('Party Name', '')).strip()
+                if _gstin_save and _party_save and _party_save.lower() not in ('nan', 'none'):
+                    st.session_state[f'cdnr_name_{_gstin_save}'] = _party_save
+
+            _lookup_col, _lookup_btn_col = st.columns([2, 1])
+            with _lookup_col:
+                _lookup_target = st.selectbox(
+                    "GSTIN to look up",
+                    _unknown_in_hub,
+                    key="hub_name_lookup_target",
+                )
+            with _lookup_btn_col:
+                st.markdown("<div style='height:29px'></div>", unsafe_allow_html=True)
+                if st.button("🔎 Get name from GST Portal", key="hub_start_name_lookup", use_container_width=True):
+                    try:
+                        from tools import gst_name_lookup as _gst_name_lookup
+                        _lookup_id = st.session_state.get("hub_name_lookup_session") or f"hub-name-{uuid.uuid4().hex}"
+                        _lookup_image = _gst_name_lookup.start_lookup(_lookup_id, _lookup_target)
+                        st.session_state["hub_name_lookup_session"] = _lookup_id
+                        st.session_state["hub_name_lookup_gstin"] = _lookup_target
+                        st.session_state["hub_name_lookup_image"] = _lookup_image
+                        st.session_state["hub_name_lookup_note"] = ""
+                        st.session_state["hub_name_lookup_attempt"] = 0
+                    except Exception as _lookup_error:
+                        st.session_state["hub_name_lookup_note"] = f"Could not open GST taxpayer search: {_lookup_error}"
+
+            _lookup_image = st.session_state.get("hub_name_lookup_image")
+            _lookup_gstin = st.session_state.get("hub_name_lookup_gstin")
+            if _lookup_image and _lookup_gstin:
+                st.info(f"GST Portal CAPTCHA for {_lookup_gstin}. Enter the characters shown below.")
+                st.image(_lookup_image, caption="Official GST taxpayer search — CAPTCHA")
+                _lookup_note = st.session_state.get("hub_name_lookup_note")
+                if _lookup_note:
+                    st.warning(_lookup_note)
+                if st.button("🔄 Refresh CAPTCHA", key=f"hub_refresh_name_captcha_{st.session_state.get('hub_name_lookup_attempt', 0)}"):
+                    try:
+                        from tools import gst_name_lookup as _gst_name_lookup
+                        _lookup_image = _gst_name_lookup.refresh_lookup(st.session_state.get("hub_name_lookup_session"))
+                        st.session_state["hub_name_lookup_image"] = _lookup_image
+                        st.session_state["hub_name_lookup_attempt"] = st.session_state.get("hub_name_lookup_attempt", 0) + 1
+                        st.rerun()
+                    except Exception as _refresh_error:
+                        st.warning(f"Could not refresh CAPTCHA: {_refresh_error}")
+                with st.form(f"hub_name_captcha_form_{st.session_state.get('hub_name_lookup_attempt', 0)}"):
+                    _lookup_code = st.text_input(
+                        "CAPTCHA",
+                        placeholder="Enter the characters shown in the image",
+                        key=f"hub_name_captcha_code_{st.session_state.get('hub_name_lookup_attempt', 0)}",
+                    )
+                    _lookup_submit = st.form_submit_button("Search GST Portal")
+                if _lookup_submit:
+                    if not _lookup_code.strip():
+                        st.warning("Enter the CAPTCHA shown above.")
+                    else:
+                        try:
+                            from tools import gst_name_lookup as _gst_name_lookup
+                            _lookup_id = st.session_state.get("hub_name_lookup_session")
+                            _name_result, _new_image, _lookup_note = _gst_name_lookup.submit_captcha(
+                                _lookup_id, _lookup_code
+                            )
+                            if _name_result:
+                                st.session_state[f"cdnr_name_{_lookup_gstin}"] = _name_result
+                                st.session_state["hub_name_lookup_revision"] = st.session_state.get("hub_name_lookup_revision", 0) + 1
+                                st.session_state["hub_name_lookup_image"] = None
+                                st.session_state["hub_name_lookup_note"] = ""
+                                _gst_name_lookup.close_lookup(_lookup_id)
+                                st.session_state["hub_name_lookup_success"] = f"Party Name updated from GST Portal: {_name_result}"
+                                st.rerun()
+                            else:
+                                st.session_state["hub_name_lookup_image"] = _new_image
+                                st.session_state["hub_name_lookup_note"] = _lookup_note
+                                st.session_state["hub_name_lookup_attempt"] = st.session_state.get("hub_name_lookup_attempt", 0) + 1
+                                st.rerun()
+                        except Exception as _lookup_error:
+                            st.session_state["hub_name_lookup_note"] = f"GST Portal lookup failed: {_lookup_error}"
+                            st.rerun()
+                if st.button("Cancel name lookup", key="hub_cancel_name_lookup"):
+                    try:
+                        from tools import gst_name_lookup as _gst_name_lookup
+                        _gst_name_lookup.close_lookup(st.session_state.get("hub_name_lookup_session"))
+                    except Exception:
+                        pass
+                    for _lookup_key in ("hub_name_lookup_session", "hub_name_lookup_gstin", "hub_name_lookup_image", "hub_name_lookup_note", "hub_name_lookup_attempt"):
+                        st.session_state.pop(_lookup_key, None)
+                    st.rerun()
 
             st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
             _btn_col1, _btn_col2 = st.columns([3, 1])
