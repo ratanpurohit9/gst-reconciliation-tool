@@ -1588,7 +1588,7 @@ if False:
 # ==========================================
 # HEADER
 # ==========================================
-if not st.session_state.get('show_dashboard', True) and st.session_state.get('app_stage') not in ('setup', 'results', 'module4', 'module6'):
+if not st.session_state.get('show_dashboard', True) and st.session_state.get('app_stage') not in ('setup', 'results', 'module3', 'module4', 'module6'):
     st.markdown("""
     <div class="app-header-banner">
         <div style="display:flex;align-items:center;gap:14px;">
@@ -1605,7 +1605,7 @@ if not st.session_state.get('show_dashboard', True) and st.session_state.get('ap
     """, unsafe_allow_html=True)
 
 # ── License status banner ─────────────────────────────────────────────────────
-if (not st.session_state.get('show_dashboard', True)) and "lic_banner" in st.session_state and st.session_state.get('app_stage') not in ('setup', 'results', 'module6'):
+if (not st.session_state.get('show_dashboard', True)) and "lic_banner" in st.session_state and st.session_state.get('app_stage') not in ('setup', 'results', 'module3', 'module6'):
     _mode, _msg = st.session_state["lic_banner"]
     if _mode == "trial":
         st.warning(f"⏳ **Trial Mode** — {_msg}  |  Enter an activation key to unlock full access.")
@@ -1644,7 +1644,7 @@ if not st.session_state.get('show_dashboard', True) and st.session_state.get('ap
                 🏠 DASHBOARD
             </span>
             <span style="color:#CBD5E1;font-size:14px;">›</span>
-            <span style="font-size:12px;color:#2563EB;font-weight:700;">{ {'module4': 'MODULE 04 · Sales Register vs GSTR-1', 'module6': 'MODULE 06 · E-Way Bill vs Sales Register'}.get(_wf_stage, 'MODULE 02 · GSTR-2B vs Purchase Register') }</span>
+            <span style="font-size:12px;color:#2563EB;font-weight:700;">{ {'module3': 'MODULE 03 · GSTR-1 vs E-Way Bill', 'module4': 'MODULE 04 · Sales Register vs GSTR-1', 'module6': 'MODULE 06 · E-Way Bill vs Sales Register'}.get(_wf_stage, 'MODULE 02 · GSTR-2B vs Purchase Register') }</span>
             <span style="font-size:11px;background:#FFFBEB;color:#D97706;border:1px solid rgba(217,119,6,.2);
                         padding:2px 8px;border-radius:12px;font-weight:700;margin-left:4px;">{_stage_pill}</span>
             <span style="font-size:12px;color:#475569;margin-left:2px;">{_client_txt}</span>
@@ -1698,6 +1698,11 @@ if st.session_state.get('show_dashboard', True):
         st.session_state['show_dashboard'] = False
         st.session_state['app_stage'] = 'setup'
         st.rerun()
+    elif _clicked == "MODULE 03":
+        st.session_state['show_dashboard'] = False
+        st.session_state['app_stage'] = 'module3'
+        st.session_state.pop('module3_results', None)
+        st.rerun()
     elif _clicked == "MODULE 04":
         st.session_state['show_dashboard'] = False
         st.session_state['app_stage'] = 'module4'
@@ -1709,6 +1714,12 @@ if st.session_state.get('show_dashboard', True):
         st.session_state.pop('module6_results', None)
         st.rerun()
     st.stop()   # ← everything below only runs when dashboard is hidden
+
+# Module 03 runs GSTR-1 B2B against active E-Way Bills independently.
+if st.session_state.get('app_stage') == 'module3':
+    from modules.module6 import render_module6
+    render_module6(mode='gstr1')
+    st.stop()
 
 # Module 04 is an isolated workspace that calls the existing reconciliation
 # engines. It exits before the Module 02 setup, processing, and results flow.
@@ -2037,13 +2048,13 @@ def _prepare_gstr2b_upload(uploaded_files):
 
 
 # ── MERGER UI — top right corner via columns ─────────────────────────────────
-if st.session_state.get('app_stage') not in ('setup', 'results', 'module4', 'module6'):
+if st.session_state.get('app_stage') not in ('setup', 'results', 'module3', 'module4', 'module6'):
     _merger_col, _merger_btn_col = st.columns([5, 1])
     with _merger_btn_col:
         if st.button("🔀 Merge 2B Files", help="Merge multiple GSTR-2B files into one", use_container_width=True):
             st.session_state['show_merger'] = not st.session_state.get('show_merger', False)
 
-if st.session_state.get('app_stage') not in ('setup', 'results', 'module4', 'module6') and st.session_state.get('show_merger', False):
+if st.session_state.get('app_stage') not in ('setup', 'results', 'module3', 'module4', 'module6') and st.session_state.get('show_merger', False):
     with st.container():
         st.markdown("""
         <div style='background: linear-gradient(135deg, #1a237e, #1565c0); color:white;
