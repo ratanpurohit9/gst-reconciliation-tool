@@ -2327,7 +2327,11 @@ if st.session_state.app_stage == 'setup':
                                         st.error(f"Could not start the GST Portal browser on the server: {_start_error}")
                         elif not st.session_state.get("backend_gstr2b_authenticated"):
                             st.info("The portal screenshot is a preview. Type the CAPTCHA/OTP from it in the input box below. Use Refresh CAPTCHA if the image is blank or unclear.")
-                            st.image(st.session_state.get("backend_gstr2b_challenge_image"), caption="GST Portal challenge running on the app server", use_container_width=True)
+                            _challenge_preview = st.session_state.get("backend_gstr2b_challenge_image")
+                            if _challenge_preview:
+                                st.image(_challenge_preview, caption="GST Portal CAPTCHA", width=260)
+                            else:
+                                st.info("No CAPTCHA image is available right now. If the portal sent an OTP, enter that OTP below; otherwise use Refresh CAPTCHA.")
                             if st.button("↻ Refresh CAPTCHA", key="backend_gstr2b_refresh_captcha"):
                                 try:
                                     st.session_state["backend_gstr2b_challenge_image"] = _g2b.refresh_captcha(_sid)

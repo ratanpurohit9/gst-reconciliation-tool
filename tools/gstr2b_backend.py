@@ -38,6 +38,52 @@ def _wait_for_captcha_render(browser, timeout: float = 12) -> None:
         time.sleep(0.4)
 
 
+def _challenge_preview(browser) -> bytes:
+    """Return only the visible GST Portal CAPTCHA graphic, never the full login page."""
+    field_y = None
+    for item in browser.find_elements(By.CSS_SELECTOR, "input"):
+        if not item.is_displayed() or not item.is_enabled():
+            continue
+        identity = " ".join(
+            (item.get_attribute(key) or "")
+            for key in ("id", "name", "placeholder", "aria-label", "class")
+        ).lower()
+        if any(token in identity for token in ("captcha", "verification", "security", "characters")):
+            field_y = item.location.get("y", 0)
+            break
+
+    candidates = []
+    for element in browser.find_elements(By.CSS_SELECTOR, "img, canvas"):
+        if not element.is_displayed():
+            continue
+        identity = " ".join(
+            (element.get_attribute(key) or "")
+            for key in ("id", "alt", "title", "src", "class")
+        ).lower()
+        size = element.size or {}
+        width, height = size.get("width", 0), size.get("height", 0)
+        if width < 60 or height < 16 or width > 900 or height > 220:
+            continue
+        if element.tag_name.lower() == "img":
+            try:
+                if not element.get_attribute("complete") and not element.get_attribute("src"):
+                    continue
+            except Exception:
+                pass
+        distance = abs(element.location.get("y", 0) - field_y) if field_y is not None else 9999
+        if "captcha" in identity:
+            candidates.append((0, distance, element))
+        elif field_y is not None and distance <= 240:
+            candidates.append((1, distance, element))
+    if not candidates:
+        return b""
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    try:
+        return candidates[0][2].screenshot_as_png
+    except Exception:
+        return b""
+
+
 def _new_driver(download_dir: str):
     options = webdriver.ChromeOptions()
     options.add_argument("--headless=new")
@@ -70,7 +116,7 @@ def _new_driver(download_dir: str):
 
 
 def start_login(session_id: str, username: str, password: str) -> bytes:
-    """Start an ephemeral browser session, fill credentials, return portal screenshot."""
+    """Start an ephemeral browser session, fill credentials, return the isolated CAPTCHA image."""
     close_session(session_id)
     download_dir = tempfile.mkdtemp(prefix="gst2b_")
     browser = _new_driver(download_dir)
@@ -95,14 +141,14 @@ def start_login(session_id: str, username: str, password: str) -> bytes:
             "password": password,
         }
         _wait_for_captcha_render(browser)
-        return browser.get_screenshot_as_png()
+        return _challenge_preview(browser)
     except Exception:
         browser.quit()
         raise
 
 
 def screenshot(session_id: str) -> bytes:
-    return _sessions[session_id]["driver"].get_screenshot_as_png()
+    return _challenge_preview(_sessions[session_id]["driver"])
 
 
 def refresh_captcha(session_id: str) -> bytes:
@@ -136,7 +182,7 @@ def refresh_captcha(session_id: str) -> bytes:
     if password_box and not (password_box.get_attribute("value") or ""):
         password_box.send_keys(state["password"])
     _wait_for_captcha_render(browser)
-    return browser.get_screenshot_as_png()
+    return _challenge_preview(browser)
 
 
 def submit_portal_code(session_id: str, code: str) -> tuple[bool, bytes, str]:
@@ -161,7 +207,7 @@ def submit_portal_code(session_id: str, code: str) -> tuple[bool, bytes, str]:
                     field = item
                     break
     if field is None:
-        return False, browser.get_screenshot_as_png(), "Could not find a visible CAPTCHA/OTP field. Refresh the challenge and try again."
+        return False, _challenge_preview(browser), "Could not find a visible CAPTCHA/OTP field. Refresh the challenge and try again."
     field.clear()
     field.send_keys(code.strip())
     buttons = browser.find_elements(By.XPATH, "//button|//input[@type='submit']|//a[@role='button']")
@@ -184,7 +230,7 @@ def submit_portal_code(session_id: str, code: str) -> tuple[bool, bytes, str]:
         if password_box and not (password_box.get_attribute("value") or ""):
             password_box.send_keys(_sessions[session_id]["password"])
         _wait_for_captcha_render(browser)
-    return logged_in, browser.get_screenshot_as_png(), note
+    return logged_in, b"" if logged_in else _challenge_preview(browser), note
 
 
 def download_periods(session_id: str, months: list[tuple[str, str]], quarterly: bool = False, progress=None) -> tuple[bytes, str]:
