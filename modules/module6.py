@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import re
 import html
+from html.parser import HTMLParser
 
 import pandas as pd
 import streamlit as st
@@ -34,6 +35,45 @@ def _norm(value):
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
 
 
+class _PortalHTMLTableParser(HTMLParser):
+    """Read table rows from the GST portal's HTML workbook exported as .xls."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.tables = []
+        self._table = None
+        self._row = None
+        self._cell = None
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag == "table":
+            self._table = []
+        elif tag == "tr" and self._table is not None:
+            self._row = []
+        elif tag in ("td", "th") and self._row is not None:
+            self._cell = []
+        elif tag == "br" and self._cell is not None:
+            self._cell.append(" ")
+
+    def handle_data(self, data):
+        if self._cell is not None:
+            self._cell.append(data)
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in ("td", "th") and self._cell is not None:
+            self._row.append(" ".join("".join(self._cell).split()))
+            self._cell = None
+        elif tag == "tr" and self._row is not None:
+            self._table.append(self._row)
+            self._row = None
+        elif tag == "table" and self._table is not None:
+            if self._table:
+                self.tables.append(self._table)
+            self._table = None
+
+
 def _is_html_xls(upload):
     if not upload.name.lower().endswith(".xls"):
         return False
@@ -47,11 +87,13 @@ def _read(upload, sheet):
     if upload.name.lower().endswith(".csv"):
         return pd.read_csv(io.BytesIO(content), header=None)
     if _is_html_xls(upload):
-        html_text = content.decode("utf-8-sig", errors="replace")
-        tables = pd.read_html(io.StringIO(html_text), header=None)
-        if not tables:
+        parser = _PortalHTMLTableParser()
+        parser.feed(content.decode("utf-8-sig", errors="replace"))
+        if not parser.tables:
             raise ValueError(f"{upload.name} contains no readable HTML table.")
-        return tables[0]
+        rows = parser.tables[0]
+        width = max(len(row) for row in rows)
+        return pd.DataFrame([row + [""] * (width - len(row)) for row in rows])
     return pd.read_excel(io.BytesIO(content), sheet_name=sheet, header=None)
 
 
