@@ -2255,6 +2255,65 @@ if st.session_state.app_stage == 'setup':
                     help="Upload one or more GSTR-2B files downloaded from GST Portal in NIC format."
                 )
                 st.caption("Download from GST Portal · XLSX, CSV supported · multiple periods/files allowed")
+                with st.expander("Download GSTR-2B from the GST Portal on this PC"):
+                    st.caption(
+                        "The reconciliation app is hosted in your browser and cannot open a browser on your PC. "
+                        "Use this desktop helper when direct filing access is unavailable: it opens Chrome, "
+                        "then waits for you to enter the portal CAPTCHA/OTP and finish login."
+                    )
+                    _helper_path = os.path.join(
+                        os.path.dirname(os.path.abspath(__file__)), "tools", "gstr2b_downloader.py"
+                    )
+                    _helper_req_path = os.path.join(
+                        os.path.dirname(os.path.abspath(__file__)), "requirements-downloader.txt"
+                    )
+                    if os.path.exists(_helper_path) and os.path.exists(_helper_req_path):
+                        _helper_bundle = io.BytesIO()
+                        with zipfile.ZipFile(_helper_bundle, "w", zipfile.ZIP_DEFLATED) as _zip:
+                            _zip.write(_helper_path, "gstr2b_downloader.py")
+                            _zip.write(_helper_req_path, "requirements-downloader.txt")
+                            _zip.writestr(
+                                "run_gstr2b_downloader.bat",
+                                "@echo off\r\n"
+                                "cd /d %~dp0\r\n"
+                                "where py >nul 2>nul\r\n"
+                                "if not errorlevel 1 (\r\n"
+                                "  py -m pip install -r requirements-downloader.txt\r\n"
+                                "  if errorlevel 1 goto failed\r\n"
+                                "  py gstr2b_downloader.py\r\n"
+                                ") else (\r\n"
+                                "  python -m pip install -r requirements-downloader.txt\r\n"
+                                "  if errorlevel 1 goto failed\r\n"
+                                "  python gstr2b_downloader.py\r\n"
+                                ")\r\n"
+                                "pause\r\n"
+                                "exit /b\r\n"
+                                ":failed\r\n"
+                                "echo Could not install dependencies. Check Python and internet access.\r\n"
+                                "pause\r\n"
+                            )
+                            _zip.writestr(
+                                "README.txt",
+                                "GSTR-2B desktop download helper\n\n"
+                                "1. Extract this ZIP on the Windows PC where you want the reports saved.\n"
+                                "2. Double-click run_gstr2b_downloader.bat. It installs the required Python packages.\n"
+                                "3. Select GSTR-2B, enter the requested period and credentials, and complete CAPTCHA/OTP yourself in Chrome.\n"
+                                "4. The helper saves period Excel files and a merged workbook in the output folder you choose.\n"
+                                "5. Return to this app and upload the merged workbook in GSTR-2B Portal Data.\n\n"
+                                "The helper remembers usernames only. It does not save portal passwords.\n"
+                                "Python 3 and Google Chrome must be installed on the PC.\n"
+                            )
+                        st.download_button(
+                            "📥 Download Desktop GSTR-2B Helper",
+                            data=_helper_bundle.getvalue(),
+                            file_name="GSTR2B_Desktop_Downloader.zip",
+                            mime="application/zip",
+                            use_container_width=True,
+                            key="download_gstr2b_desktop_helper",
+                        )
+                    else:
+                        st.warning("Desktop helper files are missing from this app build.")
+
                 st.markdown("</div>", unsafe_allow_html=True)
 
         if not (file_books and file_gst):
