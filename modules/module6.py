@@ -37,7 +37,7 @@ def _norm(value):
 def _is_html_xls(upload):
     if not upload.name.lower().endswith(".xls"):
         return False
-    sample = upload.getvalue()[:2048].lstrip(b"\\xef\\xbb\\xbf\\r\\n\\t ")
+    sample = upload.getvalue()[:2048].lstrip()
     sample_lower = sample.lower()
     return sample_lower.startswith((b"<table", b"<!doctype html", b"<html")) or b"<table" in sample_lower[:512]
 
