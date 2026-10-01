@@ -2342,13 +2342,46 @@ if st.session_state.app_stage == 'setup':
                         else:
                             st.success("GST Portal login completed. Ready to fetch the selected GSTR-2B periods.")
                             if st.button("Download and prepare merged GSTR-2B Excel", type="primary", key="backend_gstr2b_download"):
+                                _download_visual = st.empty()
                                 with st.status("Starting GST Portal download…", expanded=True) as _download_status:
                                     try:
+                                        def _render_download_progress(_percent, _message):
+                                            _percent = max(0, min(100, int(_percent)))
+                                            _safe_message = html.escape(str(_message))
+                                            _download_visual.markdown(
+                                                f"""
+                                                <div class="g2b-race-card">
+                                                  <div class="g2b-race-head"><b>🏁 GST Portal run</b><span>{_percent}%</span></div>
+                                                  <div class="g2b-race-message">{_safe_message}</div>
+                                                  <div class="g2b-city-track">
+                                                    <div class="g2b-skyline">🏢　🏙️　🏬　🏢　🏙️　🏬　🏢</div>
+                                                    <div class="g2b-race-fill" style="width:{_percent}%"></div>
+                                                    <div class="g2b-runner" style="left:calc({_percent}% - 22px)">🏃🏻‍♂️<span>〰️📦</span></div>
+                                                  </div>
+                                                  <div class="g2b-race-foot"><span>Portal download → convert → merge</span><span>{_percent} / 100</span></div>
+                                                </div>
+                                                <style>
+                                                  .g2b-race-card{{border:1px solid #c8d8f0;border-radius:16px;padding:14px 18px;margin:10px 0 16px;background:linear-gradient(135deg,#f9fcff,#eaf2ff);box-shadow:0 8px 22px #10234b16}}
+                                                  .g2b-race-head,.g2b-race-foot{{display:flex;justify-content:space-between;align-items:center;color:#10234b}}
+                                                  .g2b-race-head{{font-size:16px}} .g2b-race-head span{{font-size:20px;font-weight:800;color:#1464d2}}
+                                                  .g2b-race-message{{font-size:13px;color:#425575;margin:5px 0 12px;min-height:18px}}
+                                                  .g2b-city-track{{height:48px;position:relative;overflow:hidden;border-radius:12px;background:linear-gradient(180deg,#dff2ff,#f8fcff);border:1px solid #c5def5}}
+                                                  .g2b-skyline{{position:absolute;inset:0;white-space:nowrap;line-height:42px;font-size:26px;opacity:.55;animation:g2b-city-scroll 12s linear infinite}}
+                                                  .g2b-race-fill{{position:absolute;left:0;bottom:0;height:5px;background:linear-gradient(90deg,#34d399,#1680e8);transition:width .35s ease}}
+                                                  .g2b-runner{{position:absolute;top:2px;font-size:26px;white-space:nowrap;transition:left .35s ease;animation:g2b-bounce .42s ease-in-out infinite alternate}}
+                                                  .g2b-runner span{{font-size:14px;vertical-align:middle}}
+                                                  .g2b-race-foot{{font-size:11px;color:#64748b;margin-top:7px}}
+                                                  @keyframes g2b-bounce{{from{{transform:translateY(0)}}to{{transform:translateY(-4px)}}}}
+                                                  @keyframes g2b-city-scroll{{from{{transform:translateX(0)}}to{{transform:translateX(-100px)}}}}
+                                                </style>
+                                                """,
+                                                unsafe_allow_html=True,
+                                            )
                                         _data, _summary = _g2b.download_periods(
                                             _sid,
                                             st.session_state[_period_key],
                                             quarterly=st.session_state.get("backend_gstr2b_quarterly", False),
-                                            progress=_download_status.write,
+                                            progress=_render_download_progress,
                                         )
                                         st.session_state[_out_key] = _data
                                         st.session_state["backend_gstr2b_summary"] = _summary

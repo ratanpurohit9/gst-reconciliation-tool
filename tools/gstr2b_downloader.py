@@ -615,14 +615,26 @@ def list_files(folder):
     return set(os.listdir(folder))
 
 
-def wait_new_file(folder, before, timeout):
-    end = time.time() + timeout
+def wait_new_file(folder, before, timeout, progress_callback=None, start_percent=60, end_percent=96):
+    """Wait for a completed browser download and report honest elapsed-wait progress."""
+    started = time.time()
+    end = started + timeout
+    last_reported = -1
     while time.time() < end:
         new = [f for f in (list_files(folder) - before)
                if not f.lower().endswith((".crdownload", ".tmp"))]
         if new:
             time.sleep(1.0)
+            if progress_callback:
+                progress_callback(98, "File received; checking that the download is complete…")
             return new[0]
+        if progress_callback:
+            elapsed = time.time() - started
+            ratio = min(0.95, elapsed / max(float(timeout), 1.0))
+            percent = int(start_percent + ratio * (end_percent - start_percent))
+            if percent != last_reported:
+                progress_callback(percent, f"Waiting for GST Portal file… {int(elapsed)}s elapsed")
+                last_reported = percent
         time.sleep(0.5)
     return None
 
@@ -1477,7 +1489,7 @@ def navigate_to_returns_dashboard(driver):
     dismiss_gst_popups(driver)
 
 
-def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False):
+def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False, progress_callback=None):
     """
     Searches for the period on the Returns Dashboard, clicks DOWNLOAD on the GSTR-2B tile,
     and clicks 'GENERATE JSON FILE TO DOWNLOAD' on the offline download page.
@@ -1488,6 +1500,11 @@ def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False):
     fy_text = f"{fy_start}-{str(fy_start + 1)[2:]}"
     quarter_num = ((m_no - 4) % 12) // 3 + 1
 
+    def report(percent, message):
+        if progress_callback:
+            progress_callback(percent, message)
+
+    report(5, "Opening GST Returns dashboard…")
     navigate_to_returns_dashboard(driver)
     WebDriverWait(driver, 40).until(
         lambda d: d.find_elements(By.TAG_NAME, "select") or "login" in d.current_url.lower()
@@ -1497,15 +1514,18 @@ def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False):
     time.sleep(1.5)
 
     # Select FY, Quarter, Period
+    report(18, "Selecting financial year and return period…")
     gst_select(driver, ["fin"], 0, fy_text)
     gst_select(driver, ["quarter"], 1, f"Quarter {quarter_num}", starts=True)
     gst_select(driver, ["mon"], 2, month)
 
+    report(30, "Period selected; searching GST Returns…")
     # Click SEARCH
     if not click_xpath(driver, ["//button[contains(normalize-space(.), 'SEARCH') or contains(.,'Search')]"], timeout=10):
         return "error", "SEARCH button not found"
     time.sleep(2.5)
 
+    report(42, "Checking GSTR-2B availability…")
     # Check if GSTR-2B tile is present
     tile_xps = ["//*[contains(text(),'GSTR-2B') or contains(text(),'GSTR2B')]"]
     tiles = driver.find_elements(By.XPATH, tile_xps[0])
@@ -1521,6 +1541,7 @@ def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False):
         "//button[contains(.,'DOWNLOAD') and (contains(@onclick,'2B') or contains(@id,'2B'))]"
     ]
 
+    report(50, "Opening GSTR-2B download…")
     clicked_tile_dl = click_xpath(driver, dl_tile_xps, timeout=10)
     if not clicked_tile_dl:
         view_xps = [
@@ -1542,6 +1563,7 @@ def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False):
         "//*[(self::a or self::button) and contains(., 'Click here to download')]"
     ]
 
+    report(58, "Requesting the GSTR-2B JSON file…")
     if not click_xpath(driver, json_dl_xps, timeout=15):
         go_back_to_returns_dashboard(driver)
         return "error", "GENERATE JSON FILE TO DOWNLOAD button not found on download page"
@@ -1550,7 +1572,7 @@ def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False):
     dismiss_alert(driver)
 
     result = None
-    f = wait_new_file(temp_dir, before, DOWNLOAD_WAIT_SECONDS)
+    f = wait_new_file(temp_dir, before, DOWNLOAD_WAIT_SECONDS, progress_callback)
     if f:
         result = ("downloaded", f)
     else:
@@ -1559,12 +1581,14 @@ def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False):
             "//*[contains(text(), 'Click here to download')]"
         ]
         if click_xpath(driver, click_here_xps, timeout=10):
-            f = wait_new_file(temp_dir, before, DOWNLOAD_WAIT_SECONDS)
+            f = wait_new_file(temp_dir, before, DOWNLOAD_WAIT_SECONDS, progress_callback, start_percent=70, end_percent=96)
             if f:
                 result = ("downloaded", f)
     if result is None:
         result = ("timeout", "JSON file was not received within timeout.")
 
+    if result and result[0] == "downloaded":
+        report(100, "File downloaded successfully.")
     # Press BACK so the Returns dashboard (FY / Quarter / Period / SEARCH) is shown for the next period
     go_back_to_returns_dashboard(driver)
     return result

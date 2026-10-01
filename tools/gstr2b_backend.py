@@ -188,44 +188,79 @@ def submit_portal_code(session_id: str, code: str) -> tuple[bool, bytes, str]:
 
 
 def download_periods(session_id: str, months: list[tuple[str, str]], quarterly: bool = False, progress=None) -> tuple[bytes, str]:
-    """Download selected periods using existing parser/converter, return merged XLSX bytes."""
+    """Download every selected portal file first, then convert and merge them."""
     state = _sessions[session_id]
     browser, download_dir = state["driver"], state["download_dir"]
     periods = list(months)
     if quarterly:
         periods, _, _, _ = core.resolve_quarterly_periods(periods)
-    converted: list[str] = []
+
+    downloaded: list[tuple[str, str, str, int]] = []
     errors: list[str] = []
+    total = len(periods)
     for index, (month, year) in enumerate(periods, 1):
         if progress:
-            progress(f"Period {index}/{len(periods)} — opening {month} {year} on GST Portal…")
+            progress(0, f"Downloading {month} {year} ({index}/{total}) — opening GST Portal period…")
         try:
-            status, info = core.gst_download_gstr2b_json(browser, month, year, download_dir, is_quarterly=quarterly)
+            status, info = core.gst_download_gstr2b_json(
+                browser, month, year, download_dir,
+                is_quarterly=quarterly,
+                progress_callback=lambda pct, message, month=month, year=year, index=index: (
+                    progress(pct, f"{month} {year} ({index}/{total}) — {message}") if progress else None
+                ),
+            )
         except Exception as exc:
             errors.append(f"{month} {year}: portal request failed: {str(exc)[:180]}")
-            break
+            if progress:
+                progress(100, f"{month} {year} ({index}/{total}) — failed; continuing to next period.")
+            continue
         if status != "downloaded":
             errors.append(f"{month} {year}: {info}")
+            if progress:
+                progress(100, f"{month} {year} ({index}/{total}) — {info}")
             continue
         path = os.path.join(download_dir, info)
         converted_path = os.path.join(download_dir, f"{year}-{core.MONTHS.index(month)+1:02d}.xlsx")
+        downloaded.append((path, converted_path, month, int(year)))
         if progress:
-            progress(f"Period {index}/{len(periods)} — converting {month} {year}…")
-        core.convert_and_save_period_excel(path, converted_path, period_label=f"{month[:3]}-{year}", quarterly=quarterly)
+            progress(100, f"Downloaded {month} {year} ({index}/{total}).")
+
+    if not downloaded:
+        raise RuntimeError("No GSTR-2B files were downloaded. " + "; ".join(errors))
+
+    # Keep portal navigation/download uninterrupted; do all CPU-heavy conversions afterward.
+    converted: list[str] = []
+    for index, (source_path, converted_path, month, year) in enumerate(downloaded, 1):
+        if progress:
+            progress(
+                int((index - 1) * 100 / len(downloaded)),
+                f"Converting downloaded files — {month} {year} ({index}/{len(downloaded)})…",
+            )
+        core.convert_and_save_period_excel(
+            source_path,
+            converted_path,
+            period_label=f"{month[:3]}-{year}",
+            quarterly=quarterly,
+        )
         converted.append(converted_path)
-    if not converted:
-        raise RuntimeError("No GSTR-2B workbook was produced. " + "; ".join(errors))
+        if progress:
+            progress(
+                int(index * 100 / len(downloaded)),
+                f"Converted {month} {year} ({index}/{len(downloaded)}).",
+            )
+
     output = os.path.join(download_dir, "merged.xlsx")
     if progress:
-        progress("Merging downloaded periods into one Excel workbook…")
+        progress(0, "Merging converted periods into one Excel workbook…")
     core.merge_all_gstr2b_periods(converted, output)
+    if progress:
+        progress(100, "Merged workbook is ready.")
     with open(output, "rb") as handle:
         data = handle.read()
     description = f"Prepared {len(converted)} period(s)."
     if errors:
         description += " Some periods were skipped: " + "; ".join(errors)
     return data, description
-
 
 def close_session(session_id: str) -> None:
     state = _sessions.pop(session_id, None)
