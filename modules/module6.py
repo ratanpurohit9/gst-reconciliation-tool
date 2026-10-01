@@ -18,7 +18,7 @@ from modules.core_engine import run_reconciliation
 
 PORTAL_URL = "https://ewaybillgst.gov.in/"
 ROLE_ALIASES = {
-    "GSTIN": ("gstin", "gstin of recipient", "recipient gstin", "to gstin", "party gstin", "customer gstin"),
+    "GSTIN": ("gstin", "gstin of recipient", "gstin uin of recipient", "recipient gstin", "recipient gstin uin", "to gstin", "party gstin", "customer gstin"),
     "Invoice Number": ("invoice number", "invoice no", "document number", "document no", "doc no", "bill no"),
     "Invoice Date": ("invoice date", "document date", "doc date", "bill date", "date"),
     "Amount": ("invoice value", "total invoice value", "total value", "document value", "total amount", "invoice amount", "gross amount"),
@@ -153,8 +153,8 @@ def render_module6(mode="sales"):
     is_gstr1 = mode == "gstr1"
     module_no = "03" if is_gstr1 else "06"
     prefix = "m3" if is_gstr1 else "m6"
-    left_label = "GSTR-1 B2B" if is_gstr1 else "Sales Register"
-    left_upload_label = "Upload GSTR-1 workbook (B2B)" if is_gstr1 else "Upload Sales Register"
+    left_label = "GSTR-1 B2B" if is_gstr1 else "Sales Register / GSTR-1 B2B"
+    left_upload_label = "Upload GSTR-1 workbook (B2B)" if is_gstr1 else "Upload Sales Register or GSTR-1 workbook (B2B)"
     result_key = f"module{module_no}_results"
 
     if is_gstr1:
@@ -204,22 +204,20 @@ def render_module6(mode="sales"):
     try:
         left_sheets = _sheets(left_file)
         default_sheet = 0
-        if is_gstr1:
-            for candidate in ("b2b,sez,de", "b2b", "b2b invoices"):
-                match = next((i for i, name in enumerate(left_sheets) if name.strip().casefold() == candidate), None)
-                if match is not None:
-                    default_sheet = match
-                    break
+        for candidate in ("b2b,sez,de", "b2b", "b2b invoices"):
+            match = next((i for i, name in enumerate(left_sheets) if name.strip().casefold() == candidate), None)
+            if match is not None:
+                default_sheet = match
+                break
         left_sheet = st.selectbox(f"{left_label} sheet", left_sheets, index=default_sheet, key=f"{prefix}_left_sheet")
         left_df = _load_with_header(left_file, left_sheet, f"{prefix}_left")
-        if is_gstr1:
-            type_col = _guess_column(left_df.columns, "Invoice Type")
-            if type_col:
-                b2b_mask = left_df[type_col].astype(str).str.contains("B2B", case=False, na=False)
-                left_df = left_df.loc[b2b_mask].copy()
-                st.caption(f"B2B-only filter using '{type_col}': {len(left_df):,} invoice row(s) retained.")
-            else:
-                st.warning("Could not find an Invoice Type column to isolate B2B rows. Select a B2B-only sheet or provide a workbook with an Invoice Type column.")
+        type_col = _guess_column(left_df.columns, "Invoice Type")
+        if type_col:
+            b2b_mask = left_df[type_col].astype(str).str.contains("B2B", case=False, na=False)
+            left_df = left_df.loc[b2b_mask].copy()
+            st.caption(f"B2B-only filter using '{type_col}': {len(left_df):,} invoice row(s) retained.")
+        elif is_gstr1:
+            st.warning("Could not find an Invoice Type column to isolate B2B rows. Select a B2B-only sheet or provide a workbook with an Invoice Type column.")
         st.caption(f"{left_label} preview · {len(left_df):,} rows")
         st.dataframe(left_df.head(5), use_container_width=True, hide_index=True)
         with st.expander(f"Map {left_label} columns", expanded=True):
