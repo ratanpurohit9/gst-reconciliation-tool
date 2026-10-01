@@ -3487,30 +3487,48 @@ elif st.session_state.app_stage == 'results':
                             from tools import gstr2b_backend as _g2b_lookup
                             _portal_browser = _g2b_lookup.get_session_browser(_portal_sid)
                         if _portal_browser is not None:
-                            _name_result = _gst_name_lookup.lookup_authenticated_name(_portal_browser, _lookup_target)
-                            st.session_state[f"cdnr_name_{_lookup_target}"] = _name_result
-                            st.session_state["hub_name_lookup_revision"] = st.session_state.get("hub_name_lookup_revision", 0) + 1
-                            st.session_state["hub_name_lookup_image"] = None
-                            st.session_state["hub_name_lookup_success"] = f"Party Name updated from GST Portal: {_name_result}"
-                            st.rerun()
+                            try:
+                                with st.spinner(f"Searching GST Portal for {_lookup_target}…"):
+                                    _name_result = _gst_name_lookup.lookup_authenticated_name(_portal_browser, _lookup_target)
+                                st.session_state[f"cdnr_name_{_lookup_target}"] = _name_result
+                                st.session_state["hub_name_lookup_revision"] = st.session_state.get("hub_name_lookup_revision", 0) + 1
+                                st.session_state["hub_name_lookup_image"] = None
+                                st.session_state["hub_name_lookup_note"] = ""
+                                st.session_state["hub_name_lookup_success"] = f"Party Name updated from GST Portal: {_name_result}"
+                                st.rerun()
+                            except Exception as _auth_lookup_error:
+                                st.session_state["hub_name_lookup_note"] = (
+                                    f"Logged-in GST lookup failed ({_auth_lookup_error}). "
+                                    "Opening the CAPTCHA lookup instead."
+                                )
+                        elif _portal_sid:
+                            st.session_state["hub_name_lookup_note"] = (
+                                "The saved GST Portal session is no longer available in the app server. "
+                                "Use the CAPTCHA lookup below, or log in again to restore direct lookups."
+                            )
                         _lookup_id = st.session_state.get("hub_name_lookup_session") or f"hub-name-{uuid.uuid4().hex}"
-                        _lookup_image = _gst_name_lookup.start_lookup(_lookup_id, _lookup_target)
+                        with st.spinner(f"Opening GST taxpayer search for {_lookup_target}…"):
+                            _lookup_image = _gst_name_lookup.start_lookup(_lookup_id, _lookup_target)
                         st.session_state["hub_name_lookup_session"] = _lookup_id
                         st.session_state["hub_name_lookup_gstin"] = _lookup_target
                         st.session_state["hub_name_lookup_image"] = _lookup_image
-                        st.session_state["hub_name_lookup_note"] = ""
                         st.session_state["hub_name_lookup_attempt"] = 0
+                        if not _lookup_image:
+                            st.session_state["hub_name_lookup_note"] = (
+                                st.session_state.get("hub_name_lookup_note")
+                                or "GST Portal opened, but no CAPTCHA image was detected. Refresh CAPTCHA and try again."
+                            )
                     except Exception as _lookup_error:
-                        st.session_state["hub_name_lookup_note"] = f"Could not fetch name from the logged-in GST Portal: {_lookup_error}"
+                        st.session_state["hub_name_lookup_note"] = f"GST Portal lookup could not start: {_lookup_error}"
 
             _lookup_image = st.session_state.get("hub_name_lookup_image")
             _lookup_gstin = st.session_state.get("hub_name_lookup_gstin")
+            _lookup_note = st.session_state.get("hub_name_lookup_note")
+            if _lookup_note:
+                st.warning(_lookup_note)
             if _lookup_image and _lookup_gstin:
                 st.info(f"GST Portal CAPTCHA for {_lookup_gstin}. Enter the characters shown below.")
                 st.image(_lookup_image, caption="Official GST taxpayer search — CAPTCHA")
-                _lookup_note = st.session_state.get("hub_name_lookup_note")
-                if _lookup_note:
-                    st.warning(_lookup_note)
                 if st.button("🔄 Refresh CAPTCHA", key=f"hub_refresh_name_captcha_{st.session_state.get('hub_name_lookup_attempt', 0)}"):
                     try:
                         from tools import gst_name_lookup as _gst_name_lookup
