@@ -2037,7 +2037,7 @@ def _prepare_gstr2b_upload(uploaded_files):
 
 
 # ── MERGER UI — top right corner via columns ─────────────────────────────────
-if st.session_state.get('app_stage') not in ('setup', 'results', 'module4'):
+if st.session_state.get('app_stage') not in ('setup', 'results', 'module4', 'module6'):
     _merger_col, _merger_btn_col = st.columns([5, 1])
     with _merger_btn_col:
         if st.button("🔀 Merge 2B Files", help="Merge multiple GSTR-2B files into one", use_container_width=True):
