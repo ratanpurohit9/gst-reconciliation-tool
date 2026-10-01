@@ -2268,13 +2268,25 @@ if st.session_state.app_stage == 'setup':
                         _period_key = "backend_gstr2b_periods"
                         _out_key = "backend_gstr2b_output"
                         if _sid and st.session_state.get("backend_gstr2b_authenticated"):
-                            _session_spacer, _session_close_col = st.columns([5, 1])
-                            with _session_spacer:
+                            _session_status_col, _session_search_col, _session_close_col = st.columns([4, 1, 1])
+                            with _session_status_col:
                                 st.success("GST Portal session is active and will stay open for taxpayer name lookups.")
+                                if st.session_state.get("backend_gstr2b_search_note"):
+                                    st.warning(st.session_state.pop("backend_gstr2b_search_note"))
+                            with _session_search_col:
+                                if st.button("🔎 Open Search", key="backend_gstr2b_open_search", use_container_width=True):
+                                    try:
+                                        from tools import gst_name_lookup as _gst_name_lookup
+                                        with st.spinner("Opening Search Taxpayer → Search by GSTIN/UIN…"):
+                                            _gst_name_lookup.open_taxpayer_search(_g2b.get_session_browser(_sid))
+                                        st.session_state["backend_gstr2b_search_ready"] = True
+                                        st.success("GSTIN taxpayer search is ready in the logged-in session.")
+                                    except Exception as _nav_error:
+                                        st.warning(f"Could not open taxpayer search ({type(_nav_error).__name__}). You can still use the CAPTCHA lookup.")
                             with _session_close_col:
                                 if st.button("🔒 Close Session", key="backend_gstr2b_close_top", use_container_width=True):
                                     _g2b.close_session(_sid)
-                                    for _key in (_sid_key, _period_key, "backend_gstr2b_challenge_image", "backend_gstr2b_authenticated"):
+                                    for _key in (_sid_key, _period_key, "backend_gstr2b_challenge_image", "backend_gstr2b_authenticated", "backend_gstr2b_search_ready"):
                                         st.session_state.pop(_key, None)
                                     st.rerun()
                         if not _sid:
@@ -2399,8 +2411,18 @@ if st.session_state.app_stage == 'setup':
                                         )
                                         st.session_state[_out_key] = _data
                                         st.session_state["backend_gstr2b_summary"] = _summary
-                                        # Keep the authenticated portal browser alive for taxpayer name lookups.
+                                        # Keep the login alive and prepare its authenticated taxpayer search page.
                                         st.session_state["backend_gstr2b_authenticated"] = True
+                                        try:
+                                            from tools import gst_name_lookup as _gst_name_lookup
+                                            _gst_name_lookup.open_taxpayer_search(_g2b.get_session_browser(_sid))
+                                            st.session_state["backend_gstr2b_search_ready"] = True
+                                        except Exception as _nav_error:
+                                            st.session_state["backend_gstr2b_search_ready"] = False
+                                            st.session_state["backend_gstr2b_search_note"] = (
+                                                f"Download succeeded, but taxpayer search did not open ({type(_nav_error).__name__}). "
+                                                "Use Open Search to retry."
+                                            )
                                         _download_status.update(label="GSTR-2B workbook is ready", state="complete", expanded=False)
                                         st.rerun()
                                     except Exception as _download_error:
@@ -3497,8 +3519,9 @@ elif st.session_state.app_stage == 'results':
                                 st.session_state["hub_name_lookup_success"] = f"Party Name updated from GST Portal: {_name_result}"
                                 st.rerun()
                             except Exception as _auth_lookup_error:
+                                _safe_lookup_error = str(_auth_lookup_error).split("Stacktrace:")[0].strip()[:220]
                                 st.session_state["hub_name_lookup_note"] = (
-                                    f"Logged-in GST lookup failed ({_auth_lookup_error}). "
+                                    f"Logged-in GST lookup failed ({_safe_lookup_error or type(_auth_lookup_error).__name__}). "
                                     "Opening the CAPTCHA lookup instead."
                                 )
                         elif _portal_sid:

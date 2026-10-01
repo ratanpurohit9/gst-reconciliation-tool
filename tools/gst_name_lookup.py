@@ -150,6 +150,59 @@ def _extract_names(browser) -> tuple[str, str]:
         trade = ""
     return legal, trade
 
+def open_taxpayer_search(browser) -> None:
+    """Open the authenticated Search Taxpayer > Search by GSTIN/UIN page."""
+    browser.set_page_load_timeout(35)
+    current_url = (browser.current_url or "").lower()
+    if "/services/auth/searchtp" in current_url:
+        fields = browser.find_elements(By.ID, "for_gstin")
+        if any(field.is_displayed() for field in fields):
+            return
+
+    # Prefer the same visible navigation path used by the GST Portal UI.
+    menu_items = browser.find_elements(
+        By.XPATH,
+        "//*[self::a or self::button or @role='button'][contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'search taxpayer')]",
+    )
+    menu = next((item for item in menu_items if item.is_displayed()), None)
+    if menu is not None:
+        try:
+            from selenium.webdriver import ActionChains
+            ActionChains(browser).move_to_element(menu).perform()
+        except Exception:
+            pass
+        try:
+            menu.click()
+        except Exception:
+            browser.execute_script("arguments[0].click();", menu)
+
+        option = None
+        deadline = time.time() + 8
+        while time.time() < deadline and option is None:
+            options = browser.find_elements(
+                By.XPATH,
+                "//a[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'search by gstin/uin')]",
+            )
+            option = next((item for item in options if item.is_displayed()), None)
+            if option is None:
+                time.sleep(0.2)
+        if option is not None:
+            try:
+                option.click()
+            except Exception:
+                browser.execute_script("arguments[0].click();", option)
+            WebDriverWait(browser, 20).until(
+                lambda d: any(field.is_displayed() for field in d.find_elements(By.ID, "for_gstin"))
+            )
+            return
+
+    # A direct URL is a fallback when the portal changes its menu markup.
+    browser.get(AUTH_LOOKUP_URL)
+    WebDriverWait(browser, 20).until(
+        lambda d: any(field.is_displayed() for field in d.find_elements(By.ID, "for_gstin"))
+    )
+
+
 def lookup_authenticated_name(browser, gstin: str) -> str:
     """Fetch one taxpayer name using an already authenticated GST Portal browser."""
     requested_gstin = str(gstin).strip().upper()
@@ -157,10 +210,7 @@ def lookup_authenticated_name(browser, gstin: str) -> str:
         raise ValueError("GSTIN must contain 15 letters and digits.")
 
     browser.set_page_load_timeout(35)
-    current_url = (browser.current_url or "").lower()
-    if "/services/auth/searchtp" not in current_url:
-        browser.get(AUTH_LOOKUP_URL)
-
+    open_taxpayer_search(browser)
     field = WebDriverWait(browser, 20).until(lambda d: d.find_element(By.ID, "for_gstin"))
     if not field.is_displayed() or not field.is_enabled():
         raise RuntimeError("GST Portal taxpayer search is not available in this session.")
