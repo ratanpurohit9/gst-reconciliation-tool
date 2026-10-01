@@ -57,8 +57,16 @@ def _new_driver(download_dir: str):
         options.binary_location = chrome
     if driver and Path(driver).exists():
         from selenium.webdriver.chrome.service import Service
-        return webdriver.Chrome(service=Service(driver), options=options)
-    return webdriver.Chrome(options=options)
+        browser = webdriver.Chrome(service=Service(driver), options=options)
+    else:
+        browser = webdriver.Chrome(options=options)
+    # Headless Chrome on the hosted server needs an explicit download policy;
+    # prefs alone can leave portal-generated files blocked or undetected.
+    browser.execute_cdp_cmd("Page.setDownloadBehavior", {
+        "behavior": "allow",
+        "downloadPath": os.path.abspath(download_dir),
+    })
+    return browser
 
 
 def start_login(session_id: str, username: str, password: str) -> bytes:
