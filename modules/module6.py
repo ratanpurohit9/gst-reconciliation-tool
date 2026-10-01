@@ -127,6 +127,8 @@ def _labels(result):
             "Smart Matched (Invoice Mismatch)": "Smart Matched — invoice number differs",
             "Smart Matched (Mismatch)": "Smart Matched — amount differs",
             "Suggestion": "Suggested match — review",
+            "Suggestion (Group Match)": "Suggested group match — review",
+            "Manually Linked": "Manually linked — review",
             "Invoices Not in GSTR-2B": "In Sales Register — no E-Way Bill match",
             "Invoices Not in Purchase Books": "In E-Way Bill report — no Sales Register match",
         }).fillna(frame[status_col].astype(str))
@@ -177,8 +179,8 @@ def render_module6():
             st.rerun()
         return
 
-    sales_file = st.file_uploader("Upload Sales Register", type=["xlsx", "xls", "csv"], key="m6_sales")
-    eway_files = st.file_uploader("Upload monthly E-Way Bill Excel file(s)", type=["xlsx", "xls", "csv"],
+    sales_file = st.file_uploader("Upload Sales Register", type=["xlsx", "csv"], key="m6_sales")
+    eway_files = st.file_uploader("Upload monthly E-Way Bill Excel file(s)", type=["xlsx", "csv"],
                                   accept_multiple_files=True, key="m6_eway")
     if not sales_file or not eway_files:
         st.info("Upload the Sales Register and one or more monthly E-Way Bill reports to continue.")
