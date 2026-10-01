@@ -23,6 +23,7 @@ ROLE_ALIASES = {
     "Invoice Date": ("invoice date", "document date", "doc date", "bill date", "date"),
     "Amount": ("invoice value", "total invoice value", "total value", "document value", "total amount", "invoice amount", "gross amount"),
     "Name of Party": ("party name", "recipient name", "to trade name", "customer name", "receiver name", "name"),
+    "Status": ("status", "eway status", "e-way bill status", "ewb status"),
 }
 CANONICAL_COLUMNS = ["GSTIN", "Name of Party", "Invoice Number", "Invoice Date",
                      "Taxable Value", "IGST", "CGST", "SGST", "Cess", "Invoice Value"]
@@ -199,7 +200,21 @@ def render_module6():
             with st.expander(f"E-Way Bill report: {html.escape(upload.name)}", expanded=i == 0):
                 sheet = st.selectbox(f"Sheet in {upload.name}", _sheets(upload), key=f"m6_eway_sheet_{i}")
                 raw_df = _load_with_header(upload, sheet, f"m6_eway_{i}")
-                st.caption(f"Report preview · {len(raw_df):,} rows")
+                status_guess = _guess_column(raw_df.columns, "Status")
+                status_options = ["(no status filter)"] + list(raw_df.columns)
+                status_index = status_options.index(status_guess) if status_guess in status_options else 0
+                status_col = st.selectbox(
+                    "E-Way Bill status column (optional)", status_options,
+                    index=status_index, key=f"m6_eway_status_{i}"
+                )
+                if status_col != "(no status filter)":
+                    status_values = raw_df[status_col].astype(str).str.strip().str.casefold()
+                    active_mask = status_values.eq("active")
+                    st.caption(f"Keeping {int(active_mask.sum()):,} Active E-Way Bills; excluding {int((~active_mask).sum()):,} other-status row(s), such as cancelled bills.")
+                    raw_df = raw_df.loc[active_mask].copy()
+                else:
+                    st.warning("No status column selected. Cancelled bills may be included; map a status column if present.")
+                st.caption(f"Active report preview · {len(raw_df):,} rows")
                 st.dataframe(raw_df.head(5), use_container_width=True, hide_index=True)
                 mapped = _map_side(raw_df, "E-Way Bill report", f"m6_eway_map_{i}")
                 if mapped is not None:
