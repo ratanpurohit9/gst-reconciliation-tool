@@ -34,16 +34,32 @@ def _norm(value):
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
 
 
+def _is_html_xls(upload):
+    if not upload.name.lower().endswith(".xls"):
+        return False
+    sample = upload.getvalue()[:2048].lstrip(b"\\xef\\xbb\\xbf\\r\\n\\t ")
+    sample_lower = sample.lower()
+    return sample_lower.startswith((b"<table", b"<!doctype html", b"<html")) or b"<table" in sample_lower[:512]
+
+
 def _read(upload, sheet):
-    data = io.BytesIO(upload.getvalue())
+    content = upload.getvalue()
     if upload.name.lower().endswith(".csv"):
-        return pd.read_csv(data, header=None)
-    return pd.read_excel(data, sheet_name=sheet, header=None)
+        return pd.read_csv(io.BytesIO(content), header=None)
+    if _is_html_xls(upload):
+        html_text = content.decode("utf-8-sig", errors="replace")
+        tables = pd.read_html(io.StringIO(html_text), header=None)
+        if not tables:
+            raise ValueError(f"{upload.name} contains no readable HTML table.")
+        return tables[0]
+    return pd.read_excel(io.BytesIO(content), sheet_name=sheet, header=None)
 
 
 def _sheets(upload):
     if upload.name.lower().endswith(".csv"):
         return ["CSV"]
+    if _is_html_xls(upload):
+        return ["E-Way Bill report"]
     return pd.ExcelFile(io.BytesIO(upload.getvalue())).sheet_names
 
 
@@ -73,6 +89,12 @@ def _load_with_header(upload, sheet, key):
     )
     if upload.name.lower().endswith(".csv"):
         df = pd.read_csv(io.BytesIO(upload.getvalue()), header=int(header_row) - 1)
+    elif _is_html_xls(upload):
+        header_index = int(header_row) - 1
+        if header_index >= len(raw):
+            raise ValueError("Selected header row is outside the E-Way Bill table.")
+        df = raw.iloc[header_index + 1:].copy()
+        df.columns = raw.iloc[header_index].astype(str).str.strip().tolist()
     else:
         df = pd.read_excel(io.BytesIO(upload.getvalue()), sheet_name=sheet, header=int(header_row) - 1)
     df = df.loc[:, ~df.columns.astype(str).str.match(r"^Unnamed")]
@@ -194,7 +216,7 @@ def render_module6(mode="sales"):
             st.rerun()
         return
 
-    left_file = st.file_uploader(left_upload_label, type=["xlsx", "csv"], key=f"{prefix}_left")
+    left_file = st.file_uploader(left_upload_label, type=["xlsx", "xls", "csv"], key=f"{prefix}_left")
     eway_files = st.file_uploader("Upload monthly E-Way Bill Excel file(s)", type=["xlsx", "csv"],
                                   accept_multiple_files=True, key=f"{prefix}_eway")
     if not left_file or not eway_files:
