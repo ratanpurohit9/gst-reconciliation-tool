@@ -12,6 +12,7 @@ import time
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.common.exceptions import ElementClickInterceptedException, ElementNotInteractableException
 from selenium.webdriver.support.ui import WebDriverWait
 
 from tools import gstr2b_backend
@@ -216,7 +217,24 @@ def lookup_authenticated_name(browser, gstin: str) -> str:
         raise RuntimeError("GST Portal taxpayer search is not available in this session.")
     field.clear()
     field.send_keys(requested_gstin)
-    browser.find_element(By.ID, "lotsearch").click()
+    search_button = WebDriverWait(browser, 12).until(
+        lambda d: next(
+            (button for button in d.find_elements(By.ID, "lotsearch")
+             if button.is_displayed() and button.is_enabled()),
+            False,
+        )
+    )
+    browser.execute_script(
+        "arguments[0].scrollIntoView({block:'center', inline:'center'});",
+        search_button,
+    )
+    try:
+        search_button.click()
+    except (ElementClickInterceptedException, ElementNotInteractableException):
+        # The authenticated portal can leave a loading overlay above the form.
+        # Use the button's own DOM click handler as a fallback after scrolling.
+        time.sleep(0.6)
+        browser.execute_script("arguments[0].click();", search_button)
 
     deadline = time.time() + 22
     while time.time() < deadline:
