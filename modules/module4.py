@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import re
+import zipfile
 
 import pandas as pd
 import streamlit as st
@@ -210,26 +211,46 @@ def _display_direction(status):
     }.get(str(status), str(status))
 
 
-def _make_xlsx(b2b, cdnr):
+def _make_xlsx(b2b, cdnr, company_gstin=""):
+    """Build Module 4's workbook with the shared, detailed reconciliation layout."""
+    from modules.report_gen import generate_excel
+
+    report = generate_excel(
+        b2b if b2b is not None else pd.DataFrame(),
+        company_gstin or "",
+        "Sales Register vs GSTR-1",
+        "As uploaded",
+        "As uploaded",
+        cdnr_df=cdnr if cdnr is not None else pd.DataFrame(),
+    )
+
+    # The shared report generator provides Module 2's polished workbook layout.
+    # Translate its visible purchase-side terminology for this sales-side module.
+    replacements = (
+        ("GSTR-2B", "GSTR-1"),
+        ("Purchase Register", "Sales Register"),
+        ("Purchase Books", "Sales Register"),
+        ("PURCHASE BOOKS DATA", "SALES REGISTER DATA"),
+        ("TOTAL BOOKS", "TOTAL SALES REGISTER"),
+        ("BOOKS  (", "SALES REGISTER  ("),
+        ("Books [A]", "Sales Register [A]"),
+        ("As Per Books", "As Per Sales Register"),
+        ("Books Invoices", "Sales Register Invoices"),
+        ("Not In Books", "Not In Sales Register"),
+        ("Not in Books", "Not in Sales Register"),
+        ("Books Row ID", "Sales Register Row ID"),
+        ("2B Row ID", "GSTR-1 Row ID"),
+        ("ITC may be at risk", "GSTR-1 reporting difference needs review"),
+    )
+    source = io.BytesIO(report)
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter", datetime_format="dd/mm/yyyy") as writer:
-        summary = []
-        for label, df, col in (("B2B", b2b, "Recon_Status"), ("CDNR", cdnr, "Recon_Status_CDNR")):
-            if df is not None and not df.empty and col in df:
-                for status, count in df[col].fillna("Unknown").value_counts().items():
-                    summary.append({"Section": label, "Status": _display_direction(status), "Rows": int(count)})
-        pd.DataFrame(summary, columns=["Section", "Status", "Rows"]).to_excel(writer, index=False, sheet_name="Summary")
-        for name, df, col in (("B2B", b2b, "Recon_Status"), ("CDNR", cdnr, "Recon_Status_CDNR")):
-            if df is None or df.empty:
-                continue
-            frame = df.copy()
-            if col in frame:
-                frame["Status"] = frame[col].map(_display_direction)
-            frame.to_excel(writer, index=False, sheet_name=name)
-            ws = writer.sheets[name]
-            ws.freeze_panes(1, 0)
-            ws.autofilter(0, 0, len(frame), max(len(frame.columns) - 1, 0))
-    output.seek(0)
+    with zipfile.ZipFile(source, "r") as zin, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            payload = zin.read(item.filename)
+            if item.filename.endswith(".xml"):
+                for old, new in replacements:
+                    payload = payload.replace(old.encode("utf-8"), new.encode("utf-8"))
+            zout.writestr(item, payload)
     return output.getvalue()
 
 
@@ -257,7 +278,7 @@ def render_module4():
                 st.metric("Rows", len(frame))
                 st.dataframe(counts.rename("Count").rename_axis("Status").reset_index(), use_container_width=True, hide_index=True)
                 st.dataframe(frame.head(5), use_container_width=True, hide_index=True)
-        st.download_button("Download Module 4 reconciliation (Excel)", _make_xlsx(b2b, cdnr),
+        st.download_button("Download Module 4 reconciliation (Excel)", _make_xlsx(b2b, cdnr, saved.get("seller_gstin", "")),
                            file_name="Sales_Register_vs_GSTR1_Reconciliation.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                            type="primary")
@@ -327,7 +348,7 @@ def render_module4():
                 books_cdnr = map_cdnr(books_cdnr_raw, "Books", seller_gstin[:2])
                 portal_cdnr = map_cdnr(portal_cdnr_raw, "GSTR-1", seller_gstin[:2])
                 cdnr_result = run_cdnr_reconciliation(books_cdnr, portal_cdnr, tolerance)
-            st.session_state["module4_results"] = {"b2b": b2b_result, "cdnr": cdnr_result, "tolerance": tolerance, "smart": smart}
+            st.session_state["module4_results"] = {"b2b": b2b_result, "cdnr": cdnr_result, "tolerance": tolerance, "smart": smart, "seller_gstin": seller_gstin.strip().upper()}
             st.rerun()
         except Exception as exc:
             st.error(f"Module 4 could not run: {exc}")
