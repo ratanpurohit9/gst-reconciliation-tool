@@ -81,7 +81,7 @@ def _load_with_header(upload, sheet, key):
 def _map_side(df, side, key):
     st.markdown(f"**{side} column mapping**")
     fields = {}
-    for role in ROLE_ALIASES:
+    for role in ("GSTIN", "Invoice Number", "Invoice Date", "Amount", "Name of Party"):
         guess = _guess_column(df.columns, role)
         options = ["(skip)"] + list(df.columns)
         index = options.index(guess) if guess in options else 0
