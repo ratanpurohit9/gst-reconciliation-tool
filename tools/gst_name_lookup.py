@@ -6,6 +6,7 @@ solving or private credentials are used by this module.
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import time
 
@@ -41,6 +42,36 @@ def _wait_for_challenge(browser, timeout: int = 15) -> None:
     time.sleep(0.4)
 
 
+def _captcha_image_screenshot(browser) -> bytes:
+    """Return only the CAPTCHA graphic, never a full-page portal screenshot."""
+    field = _captcha_field(browser)
+    if field is None:
+        raise RuntimeError("The CAPTCHA entry field is not visible; refresh the challenge.")
+
+    field_y = field.location.get("y", 0)
+    candidates = []
+    for element in browser.find_elements(By.CSS_SELECTOR, "img, canvas"):
+        if not element.is_displayed():
+            continue
+        identity = " ".join(
+            (element.get_attribute(key) or "")
+            for key in ("id", "alt", "title", "src", "class")
+        ).lower()
+        size = element.size or {}
+        width, height = size.get("width", 0), size.get("height", 0)
+        if width < 70 or height < 18 or width > 700 or height > 180:
+            continue
+        distance = abs(element.location.get("y", 0) - field_y)
+        if "captcha" in identity:
+            candidates.append((0, distance, element))
+        elif distance <= 180:
+            candidates.append((1, distance, element))
+    if not candidates:
+        raise RuntimeError("Could not isolate the CAPTCHA image, so the portal page was not shown.")
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return candidates[0][2].screenshot_as_png
+
+
 def _captcha_field(browser):
     candidates = browser.find_elements(By.CSS_SELECTOR, "input")
     for item in candidates:
@@ -69,7 +100,7 @@ def _captcha_field(browser):
 def _extract_names(browser) -> tuple[str, str]:
     """Read the labeled Legal Name and Trade Name fields from the result page."""
     values = browser.execute_script("""
-        const clean = value => (value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+        const clean = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
         const labels = ['legal name of business', 'trade name'];
         const out = {};
         for (const labelText of labels) {
@@ -89,7 +120,7 @@ def _extract_names(browser) -> tuple[str, str]:
             if (node.nextElementSibling) candidates.push(node.nextElementSibling);
             if (labelIndex >= 0) candidates.push(...children.slice(labelIndex + 1));
             const value = candidates
-              .map(el => (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim())
+              .map(el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim())
               .find(text => text && !labels.some(other => clean(text) === other)
                 && !['effective date of registration', 'constitution of business'].some(other => clean(text).startsWith(other)));
             if (value) { out[labelText] = value; break; }
@@ -114,14 +145,23 @@ def _extract_names(browser) -> tuple[str, str]:
         return lines[index] if index < len(lines) else ""
     legal = legal or value_after("legal name of business")
     trade = trade or value_after("trade name")
+    if legal and trade and trade.casefold() == legal.casefold():
+        trade = ""
     return legal, trade
 
 def start_lookup(session_id: str, gstin: str) -> bytes:
-    """Open taxpayer search, enter GSTIN, and return the visible CAPTCHA screenshot."""
+    """Show the CAPTCHA for a GSTIN, reusing the user's browser session when possible."""
     _expire_sessions()
-    close_lookup(session_id)
-    download_dir = tempfile.mkdtemp(prefix="gst_name_lookup_")
-    browser = gstr2b_backend._new_driver(download_dir)
+    state = _sessions.get(session_id)
+    if state:
+        browser = state["driver"]
+        download_dir = state["download_dir"]
+    else:
+        download_dir = tempfile.mkdtemp(prefix="gst_name_lookup_")
+        browser = gstr2b_backend._new_driver(download_dir)
+        state = {"driver": browser, "download_dir": download_dir}
+        _sessions[session_id] = state
+
     try:
         browser.set_page_load_timeout(45)
         browser.get(LOOKUP_URL)
@@ -129,24 +169,17 @@ def start_lookup(session_id: str, gstin: str) -> bytes:
             lambda d: d.find_element(By.ID, "for_gstin")
         )
         field.clear()
-        field.send_keys(str(gstin).strip().upper())
-        # Leaving the GSTIN field triggers the portal CAPTCHA; do not press
-        # SEARCH until the user has entered the challenge in the app.
+        requested_gstin = str(gstin).strip().upper()
+        field.send_keys(requested_gstin)
+        # Leaving the GSTIN field triggers the CAPTCHA. SEARCH is reserved for
+        # the user's CAPTCHA submission.
         field.send_keys(Keys.TAB)
         _wait_for_challenge(browser)
-        _sessions[session_id] = {
-            "driver": browser,
-            "download_dir": download_dir,
-            "gstin": str(gstin).strip().upper(),
-            "created_at": time.time(),
-        }
-        return browser.get_screenshot_as_png()
+        state.update(gstin=requested_gstin, created_at=time.time())
+        return _captcha_image_screenshot(browser)
     except Exception:
-        browser.quit()
-        import shutil
-        shutil.rmtree(download_dir, ignore_errors=True)
+        close_lookup(session_id)
         raise
-
 
 def refresh_lookup(session_id: str) -> bytes:
     """Refresh the CAPTCHA while keeping the entered GSTIN."""
@@ -170,7 +203,7 @@ def refresh_lookup(session_id: str) -> bytes:
         field.send_keys(state["gstin"])
         browser.find_element(By.ID, "lotsearch").click()
     _wait_for_challenge(browser)
-    return browser.get_screenshot_as_png()
+    return _captcha_image_screenshot(browser)
 
 
 def submit_captcha(session_id: str, code: str) -> tuple[str | None, bytes, str]:
@@ -181,7 +214,7 @@ def submit_captcha(session_id: str, code: str) -> tuple[str | None, bytes, str]:
     browser = state["driver"]
     field = _captcha_field(browser)
     if field is None:
-        return None, browser.get_screenshot_as_png(), "Could not locate the CAPTCHA field. Refresh it and try again."
+        return None, _captcha_image_screenshot(browser), "Could not locate the CAPTCHA field. Refresh it and try again."
     field.clear()
     field.send_keys(code.strip())
     browser.find_element(By.ID, "lotsearch").click()
@@ -190,16 +223,23 @@ def submit_captcha(session_id: str, code: str) -> tuple[str | None, bytes, str]:
     while time.time() < end:
         body = browser.find_element(By.TAG_NAME, "body").text
         lower = body.lower()
-        if "legal name of business" in lower or "trade name" in lower:
+        result_match = re.search(
+            r"Search\s+Result\s+based\s+on\s+GSTIN/UIN\s*:\s*([A-Z0-9]{15})",
+            body,
+            flags=re.IGNORECASE,
+        )
+        # Require the portal result header to match this lookup's GSTIN. This
+        # prevents a previous result from being assigned to the next row.
+        if result_match and result_match.group(1).upper() == state["gstin"]:
             legal, trade = _extract_names(browser)
             if legal:
                 chosen = trade if trade and trade.lower() not in ("na", "n/a", "not available", "-") else legal
-                return chosen, browser.get_screenshot_as_png(), f"GST Portal name found: {chosen}"
+                return chosen, b"", f"GST Portal name found: {chosen}"
         if any(message in lower for message in ("invalid captcha", "incorrect captcha", "captcha is invalid", "enter valid captcha")):
             _wait_for_challenge(browser)
-            return None, browser.get_screenshot_as_png(), "CAPTCHA was not accepted. Enter the refreshed CAPTCHA."
+            return None, _captcha_image_screenshot(browser), "CAPTCHA was not accepted. Enter the refreshed CAPTCHA."
         time.sleep(0.5)
-    return None, browser.get_screenshot_as_png(), "The portal did not return a name in time. Refresh the CAPTCHA and try again."
+    return None, _captcha_image_screenshot(browser), "The portal did not return a name in time. Refresh the CAPTCHA and try again."
 
 
 def close_lookup(session_id: str | None) -> None:

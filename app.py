@@ -3375,7 +3375,13 @@ elif st.session_state.app_stage == 'results':
                 'GST Portal': ['https://services.gst.gov.in/services/searchtp'] * len(_unknown_in_hub),
             })
             _gst_copy_text = "\n".join(_unknown_in_hub)
-            _hub_name_editor_key = f"hub_name_editor_{hashlib.md5(_gst_copy_text.encode('utf-8')).hexdigest()[:8]}_{st.session_state.get('hub_name_lookup_revision', 0)}"
+            _name_values_signature = "\n".join(
+                f"{_g}:{st.session_state.get(f'cdnr_name_{_g}', '')}" for _g in _unknown_in_hub
+            )
+            _hub_name_editor_key = (
+                f"hub_name_editor_{hashlib.md5(_gst_copy_text.encode('utf-8')).hexdigest()[:8]}_"
+                f"{hashlib.md5(_name_values_signature.encode('utf-8')).hexdigest()[:8]}"
+            )
             components.html(f"""
             <button id="copy-gstin" style="border:1px solid #CBD5E1;background:#fff;border-radius:8px;
                     padding:8px 12px;font-size:12px;font-weight:800;color:#0F172A;cursor:pointer">
@@ -3422,7 +3428,9 @@ elif st.session_state.app_stage == 'results':
             for _, _name_row in _edited_names.iterrows():
                 _gstin_save = str(_name_row.get('GSTIN', '')).strip().upper()
                 _party_save = str(_name_row.get('Party Name', '')).strip()
-                if _gstin_save and _party_save and _party_save.lower() not in ('nan', 'none'):
+                if _gstin_save:
+                    if _party_save.lower() in ('nan', 'none'):
+                        _party_save = ''
                     st.session_state[f'cdnr_name_{_gstin_save}'] = _party_save
 
             _lookup_col, _lookup_btn_col = st.columns([2, 1])
@@ -3486,7 +3494,6 @@ elif st.session_state.app_stage == 'results':
                                 st.session_state["hub_name_lookup_revision"] = st.session_state.get("hub_name_lookup_revision", 0) + 1
                                 st.session_state["hub_name_lookup_image"] = None
                                 st.session_state["hub_name_lookup_note"] = ""
-                                _gst_name_lookup.close_lookup(_lookup_id)
                                 st.session_state["hub_name_lookup_success"] = f"Party Name updated from GST Portal: {_name_result}"
                                 st.rerun()
                             else:
@@ -3511,6 +3518,13 @@ elif st.session_state.app_stage == 'results':
             _btn_col1, _btn_col2 = st.columns([3, 1])
             with _btn_col1:
                 if st.button("Update Names & Proceed to Downloads", type="primary", use_container_width=True, key="hub_apply_names"):
+                    try:
+                        from tools import gst_name_lookup as _gst_name_lookup
+                        _gst_name_lookup.close_lookup(st.session_state.get("hub_name_lookup_session"))
+                    except Exception:
+                        pass
+                    for _lookup_key in ("hub_name_lookup_session", "hub_name_lookup_gstin", "hub_name_lookup_image", "hub_name_lookup_note", "hub_name_lookup_attempt"):
+                        st.session_state.pop(_lookup_key, None)
                     _updated_hub = 0
                     for _, _row in _edited_names.iterrows():
                         _g = str(_row['GSTIN']).strip().upper()
