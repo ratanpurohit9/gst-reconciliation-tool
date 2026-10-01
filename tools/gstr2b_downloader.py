@@ -26,10 +26,10 @@ import os
 import shutil
 import sys
 import time
-try:
-    import tkinter as tk
 import zipfile
 from datetime import datetime
+try:
+    import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
 except ImportError:
     tk = filedialog = messagebox = ttk = None
