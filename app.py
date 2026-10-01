@@ -2305,16 +2305,19 @@ if st.session_state.app_stage == 'setup':
                         else:
                             st.success("GST Portal login completed.")
                             if st.button("Download and prepare merged GSTR-2B Excel", type="primary", key="backend_gstr2b_download"):
-                                with st.spinner("Downloading selected periods on the app server…"):
+                                with st.status("Starting GST Portal download…", expanded=True) as _download_status:
                                     try:
-                                        _data, _summary = _g2b.download_periods(_sid, st.session_state[_period_key], quarterly=st.session_state.get("backend_gstr2b_quarterly", False))
+                                        _data, _summary = _g2b.download_periods(_sid, st.session_state[_period_key], quarterly=st.session_state.get("backend_gstr2b_quarterly", False), progress=_download_status.write)
                                         st.session_state[_out_key] = _data
                                         st.session_state["backend_gstr2b_summary"] = _summary
                                         _g2b.close_session(_sid)
                                         st.session_state.pop(_sid_key, None)
                                         st.session_state["backend_gstr2b_authenticated"] = False
+                                        _download_status.update(label="GSTR-2B workbook is ready", state="complete", expanded=False)
                                         st.rerun()
-                                    except Exception as _e: st.error(f"GSTR-2B download failed: {_e}")
+                                    except Exception as _e:
+                                        _download_status.update(label="GSTR-2B download failed", state="error", expanded=True)
+                                        st.error(f"GSTR-2B download failed: {_e}")
                         if st.session_state.get(_out_key):
                             st.success(st.session_state.get("backend_gstr2b_summary", "Merged workbook is ready."))
                             st.download_button("Download merged GSTR-2B Excel", data=st.session_state[_out_key], file_name="GSTR2B_MERGED.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="backend_gstr2b_download_file")

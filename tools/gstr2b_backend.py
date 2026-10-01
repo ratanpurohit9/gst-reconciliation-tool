@@ -37,16 +37,21 @@ def submit_portal_code(session_id,code):
     button.click() if button else field.submit(); time.sleep(3); body=browser.find_element(By.TAG_NAME,"body").text.lower()
     logged="/returns/auth/" in browser.current_url.lower() or "logout" in body or "return dashboard" in body
     return logged,browser.get_screenshot_as_png(),"GST Portal login succeeded." if logged else "If the portal asks for another CAPTCHA or OTP, enter it here."
-def download_periods(session_id,months,quarterly=False):
+def download_periods(session_id,months,quarterly=False,progress=None):
     state=_sessions[session_id]; browser,folder=state["driver"],state["folder"]; periods=list(months)
     if quarterly:periods,_,_,_=core.resolve_quarterly_periods(periods)
     converted=[]; failures=[]
-    for month,year in periods:
-        status,info=core.gst_download_gstr2b_json(browser,month,year,folder,is_quarterly=quarterly)
-        if status!="downloaded":failures.append(f"{month} {year}: {info}"); continue
+    for index,(month,year) in enumerate(periods,1):
+        if progress: progress(f"Period {index}/{len(periods)} — opening {month} {year} on GST Portal…")
+        try: status,info=core.gst_download_gstr2b_json(browser,month,year,folder,is_quarterly=quarterly)
+        except Exception as exc:
+            failures.append(f"{month} {year}: portal request failed: {str(exc)[:180]}"); break
+        if status!="downloaded": failures.append(f"{month} {year}: {info}"); continue
+        if progress: progress(f"Period {index}/{len(periods)} — converting {month} {year}…")
         source=os.path.join(folder,info); target=os.path.join(folder,f"{year}-{core.MONTHS.index(month)+1:02d}.xlsx")
         core.convert_and_save_period_excel(source,target,period_label=f"{month[:3]}-{year}",quarterly=quarterly); converted.append(target)
     if not converted:raise RuntimeError("No workbook was produced. "+"; ".join(failures))
+    if progress: progress("Merging downloaded periods into one Excel workbook…")
     output=os.path.join(folder,"GSTR2B_MERGED.xlsx"); core.merge_all_gstr2b_periods(converted,output)
     with open(output,"rb") as f:data=f.read()
     summary=f"Prepared {len(converted)} period(s)."
