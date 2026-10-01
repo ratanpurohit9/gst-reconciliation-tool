@@ -2268,27 +2268,44 @@ if st.session_state.app_stage == 'setup':
                         _period_key = "backend_gstr2b_periods"
                         _out_key = "backend_gstr2b_output"
                         if not _sid:
-                            _fy_choices = [f"{y}-{str(y+1)[-2:]}" for y in range(2020, 2031)]
+                            _year_choices = [str(y) for y in range(2020, 2032)]
                             with st.form("backend_gstr2b_login_form"):
                                 _gst_user = st.text_input("GST Portal username")
                                 _gst_password = st.text_input("GST Portal password", type="password")
-                                _fy = st.selectbox("Financial year", _fy_choices, index=_fy_choices.index("2025-26") if "2025-26" in _fy_choices else 0)
-                                _months = st.multiselect("Months to download", _g2b.core.MONTHS, default=[])
+                                _from_col, _to_col = st.columns(2)
+                                with _from_col:
+                                    _from_month = st.selectbox("From month", _g2b.core.MONTHS, index=3, key="gstr2b_from_month")
+                                    _from_year = st.selectbox("From year", _year_choices, index=_year_choices.index("2025"), key="gstr2b_from_year")
+                                with _to_col:
+                                    _to_month = st.selectbox("To month", _g2b.core.MONTHS, index=2, key="gstr2b_to_month")
+                                    _to_year = st.selectbox("To year", _year_choices, index=_year_choices.index("2026"), key="gstr2b_to_year")
                                 _quarterly = st.checkbox("Client files GSTR-2B quarterly (QRMP)")
+                                if _quarterly:
+                                    st.caption("QRMP mode downloads the quarter-ending GSTR-2B for every quarter touched by this date range.")
+                                else:
+                                    st.caption("Both selected months are included in the download range.")
                                 _start_login = st.form_submit_button("Start secure portal session", type="primary")
                             if _start_login:
-                                if not _gst_user.strip() or not _gst_password or not _months:
-                                    st.error("Enter the portal username, password, and at least one month.")
+                                _range_start = int(_from_year) * 12 + _g2b.core.MONTHS.index(_from_month)
+                                _range_end = int(_to_year) * 12 + _g2b.core.MONTHS.index(_to_month)
+                                if not _gst_user.strip() or not _gst_password:
+                                    st.error("Enter the portal username and password.")
+                                elif _range_start > _range_end:
+                                    st.error("The From month/year must be on or before the To month/year.")
                                 else:
                                     _sid = uuid.uuid4().hex
                                     try:
                                         _challenge_image = _g2b.start_login(_sid, _gst_user, _gst_password)
-                                        _fy_start = int(_fy[:4])
-                                        _gstr2b_periods = [
-                                            (m, str(_fy_start if _g2b.core.MONTHS.index(m) >= 3 else _fy_start + 1))
-                                            for m in _months
-                                        ]
-                                        _gstr2b_periods.sort(key=lambda p: (int(p[1]), _g2b.core.MONTHS.index(p[0])))
+                                        _gstr2b_periods = []
+                                        for _period_index in range(_range_start, _range_end + 1):
+                                            _period_year, _month_index = divmod(_period_index, 12)
+                                            _gstr2b_periods.append((_g2b.core.MONTHS[_month_index], str(_period_year)))
+                                        if _quarterly:
+                                            _, _quarters, _, _ = _g2b.core.resolve_quarterly_periods(_gstr2b_periods)
+                                            _gstr2b_periods = sorted(
+                                                _quarters.keys(),
+                                                key=lambda p: (int(p[1]), _g2b.core.MONTHS.index(p[0])),
+                                            )
                                         st.session_state[_sid_key] = _sid
                                         st.session_state[_period_key] = _gstr2b_periods
                                         st.session_state["backend_gstr2b_quarterly"] = _quarterly
