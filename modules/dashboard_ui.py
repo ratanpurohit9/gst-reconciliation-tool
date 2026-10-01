@@ -234,7 +234,7 @@ MODULES = [
         "name": "GSTR-1 vs E-Way Bill",
         "desc": "Reconcile outward supplies in GSTR-1 against E-Way Bills for compliance checks and movement tracking.",
         "tags": ["GSTR-1", "E-Way Bill", "Outward"],
-        "active": False,
+        "active": True,
     },
     {
         "num": "Module 04",
@@ -324,7 +324,7 @@ def render_dashboard():
     </div>
     <div class="module-heading">
         <div class="module-title"><span class="material-symbols-outlined" style="color:#0058be">folder_open</span>Available Modules</div>
-        <div class="module-live-badge">1 Live • Modules 04 & 06 Preview • 3 Coming Soon</div>
+        <div class="module-live-badge">2 Live • Modules 04 & 06 Preview • 2 Coming Soon</div>
     </div>
     """, unsafe_allow_html=True)
 
