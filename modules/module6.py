@@ -217,7 +217,7 @@ def render_module6(mode="sales"):
         return
 
     left_file = st.file_uploader(left_upload_label, type=["xlsx", "xls", "csv"], key=f"{prefix}_left")
-    eway_files = st.file_uploader("Upload monthly E-Way Bill Excel file(s)", type=["xlsx", "csv"],
+    eway_files = st.file_uploader("Upload monthly E-Way Bill Excel file(s)", type=["xlsx", "xls", "csv"],
                                   accept_multiple_files=True, key=f"{prefix}_eway")
     if not left_file or not eway_files:
         st.info(f"Upload the {left_label} workbook and one or more monthly E-Way Bill reports to continue.")
