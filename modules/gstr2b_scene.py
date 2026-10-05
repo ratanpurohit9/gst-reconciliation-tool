@@ -8,6 +8,7 @@ import html
 import re
 
 from modules.gstr2b_assets import B64, SIZE
+from modules import gstr2b_cat_assets as _cat
 
 _AB = {"January": "JAN", "February": "FEB", "March": "MAR", "April": "APR", "May": "MAY", "June": "JUN",
        "July": "JUL", "August": "AUG", "September": "SEP", "October": "OCT", "November": "NOV", "December": "DEC"}
@@ -44,6 +45,12 @@ SCENE_CSS = re.sub(r"\s*\n\s*", "", """
 @keyframes q-sway{to{transform:rotate(2.5deg)}}
 @keyframes q-drift{to{transform:translateX(26px)}}
 """)
+
+
+def _cat_img(name, x, y, cls=""):
+    w, h = _cat.SIZE[name]
+    c = f' class="{cls}"' if cls else ""
+    return f'<image{c} href="data:image/webp;base64,{_cat.B64[name]}" x="{x:.1f}" y="{y:.1f}" width="{w}" height="{h}"/>'
 
 
 def _img(name, x, y, cls="", extra=""):
@@ -107,21 +114,12 @@ def build_scene(periods, states, working=True):
         '</defs>',
         '<ellipse cx="500" cy="262" rx="470" ry="26" fill="#e6f1fc"/>',
         f'<g class="q-c1">{_img("cloud1", 300, 6)}</g><g class="q-c2">{_img("cloud2", 760, 18)}</g>',
-        f'<g class="q-sway">{_img("plant", -4, 176)}</g>',
-        '<rect x="0" y="246" width="266" height="18" rx="7" fill="#ecd3a8"/><rect x="0" y="258" width="266" height="6" rx="3" fill="#d9bb8a"/>',
-        _img("mascot_open", mx, my),
-        _img("mascot_closed", mx + 4, my, "q-eye"),
-        _img("laptop", 150, 176),
-        _img("arms_a", mx + 41, my + 159),
-        _img("arms_b", mx + 41.4, my + 159, "q-key"),
-        _img("mug", 4, 222),
-        '<g class="q-steam"><path d="M22 218 q-4-6 0-12 q4-6 0-12" stroke="#a9bdd6" stroke-width="2.2" fill="none" stroke-linecap="round"/></g>',
-        _img("stack", 200, 216),
+        _cat_img("cat_cheer", 40, 89, "q-folder") if all_done else (
+            _cat_img("cat_work", 8, 60, "q-sway") if working else _cat_img("cat_think", 50, 83, "q-sway")),
+        _cat_img("doc_icon", 335, 78, "q-folder"),
         # forearm hangs from the elbow, claw down (drawn first so the elbow cap covers its end)
         f'<g class="q-claw"><g transform="translate({_CLAW_X} {_ELBOW_Y}) rotate(90) translate(-4 -17)">{_img("forearm", 0, 0)}</g></g>',
         _img("robot_arm", _CLAW_X - 187, _ELBOW_Y - 64),
-        _img("machine", 262, 30),
-        _img("lamp", 369, 20, "q-lamp"),
         _img("conveyor", 520, 214),
         '<g clip-path="url(#qbelt)"><g class="q-belt" fill="#6f95c4" opacity=".55">' + "".join(f'<rect x="{510 + k * 28}" y="221" width="12" height="3" rx="1.5"/>' for k in range(16)) + '</g></g>',
         f'<g clip-path="url(#qwin)">{tiles}</g>',

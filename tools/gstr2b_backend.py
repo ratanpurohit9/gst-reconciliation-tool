@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -36,11 +37,34 @@ def _wait_for_captcha_render(browser, timeout: float = 12) -> None:
                 return
         except Exception:
             return
-        time.sleep(0.4)
+        time.sleep(0.1)
+
+
+_FAST_PICK_JS = """
+    const vis = e => !!(e && (e.offsetWidth || e.offsetHeight || e.getClientRects().length));
+    const imgs = [...document.querySelectorAll('img, canvas')].filter(vis);
+    const ident = e => ((e.id || '') + ' ' + (e.alt || '') + ' ' + (e.title || '') + ' ' + (e.className || '') + ' ' + ((e.src || '').slice(0, 200))).toLowerCase();
+    const ok = e => { const r = e.getBoundingClientRect(); return r.width >= 60 && r.height >= 16 && r.width <= 900 && r.height <= 220; };
+    const hit = imgs.find(e => ok(e) && ident(e).includes('captcha') && (e.tagName !== 'IMG' || (e.complete && e.naturalWidth > 0)));
+    if (hit) hit.scrollIntoView({block: 'center'});
+    return hit || null;
+"""
 
 
 def _challenge_preview(browser) -> bytes:
     """Return only the visible GST Portal CAPTCHA graphic, never the full login page."""
+    try:
+        element = browser.execute_script(_FAST_PICK_JS)
+        if element is not None:
+            png = element.screenshot_as_png
+            if png:
+                return png
+    except Exception:
+        pass
+    return _slow_challenge_preview(browser)
+
+
+def _slow_challenge_preview(browser) -> bytes:
     field_y = None
     for item in browser.find_elements(By.CSS_SELECTOR, "input"):
         if not item.is_displayed() or not item.is_enabled():
@@ -164,18 +188,90 @@ def _new_driver(download_dir: str):
     return browser
 
 
-def start_login(session_id: str, username: str, password: str) -> bytes:
-    """Start an ephemeral browser session, fill credentials, return the isolated CAPTCHA image."""
-    close_session(session_id)
+# ---- pre-warmed login browser ------------------------------------------------------------
+# Chrome start-up + portal page load + CAPTCHA fetch take several seconds. While the user is
+# still typing credentials we do that work in the background, so "Start secure portal session"
+# only has to fill the form and grab the already-rendered CAPTCHA.
+_warm: dict = {"driver": None, "dir": None, "ts": 0.0, "thread": None}
+_warm_lock = threading.Lock()
+_WARM_MAX_AGE = 120  # seconds; older pages are reloaded so the CAPTCHA is fresh
+
+
+def _warm_worker() -> None:
     download_dir = tempfile.mkdtemp(prefix="gst2b_")
-    browser = _new_driver(download_dir)
+    browser = None
     try:
+        browser = _new_driver(download_dir)
         browser.set_page_load_timeout(45)
         browser.get(core.GST_LOGIN_URL)
         WebDriverWait(browser, 30).until(
             lambda d: d.find_elements(By.CSS_SELECTOR, "input[type='password']")
         )
-        time.sleep(1)
+        _wait_for_captcha_render(browser)
+        with _warm_lock:
+            _warm.update(driver=browser, dir=download_dir, ts=time.time())
+    except Exception:
+        try:
+            if browser:
+                browser.quit()
+        except Exception:
+            pass
+        import shutil
+        shutil.rmtree(download_dir, ignore_errors=True)
+
+
+def prewarm() -> None:
+    """Idempotent: start one background login browser if none is ready or being prepared."""
+    with _warm_lock:
+        if _warm["driver"] is not None:
+            return
+        t = _warm["thread"]
+        if t is not None and t.is_alive():
+            return
+        _warm["thread"] = threading.Thread(target=_warm_worker, daemon=True)
+        _warm["thread"].start()
+
+
+def _take_warm(wait: float = 20.0):
+    """Hand over the pre-warmed browser (waiting briefly if it is still starting), else None."""
+    t = _warm["thread"]
+    if _warm["driver"] is None and t is not None and t.is_alive():
+        t.join(wait)
+    with _warm_lock:
+        browser, download_dir, ts = _warm["driver"], _warm["dir"], _warm["ts"]
+        _warm.update(driver=None, dir=None, ts=0.0)
+    if browser is None:
+        return None, None
+    try:
+        browser.current_url  # raises if Chrome died
+        if time.time() - ts > _WARM_MAX_AGE:
+            browser.get(core.GST_LOGIN_URL)
+            WebDriverWait(browser, 30).until(
+                lambda d: d.find_elements(By.CSS_SELECTOR, "input[type='password']")
+            )
+        return browser, download_dir
+    except Exception:
+        try:
+            browser.quit()
+        except Exception:
+            pass
+        return None, None
+
+
+def start_login(session_id: str, username: str, password: str) -> bytes:
+    """Start an ephemeral browser session, fill credentials, return the isolated CAPTCHA image."""
+    close_session(session_id)
+    browser, download_dir = _take_warm()
+    if browser is None:
+        download_dir = tempfile.mkdtemp(prefix="gst2b_")
+        browser = _new_driver(download_dir)
+    try:
+        browser.set_page_load_timeout(45)
+        if browser.current_url.rstrip("/") != core.GST_LOGIN_URL.rstrip("/"):
+            browser.get(core.GST_LOGIN_URL)
+        WebDriverWait(browser, 30).until(
+            lambda d: d.find_elements(By.CSS_SELECTOR, "input[type='password']")
+        )
         user_box, password_box = core.gst_login_boxes(browser)
         if not user_box or not password_box:
             raise RuntimeError("GST Portal login fields were not found.")
@@ -282,30 +378,61 @@ def submit_portal_code(session_id: str, code: str) -> tuple[bool, bytes, str]:
     return logged_in, b"" if logged_in else _challenge_preview(browser), note
 
 
-def download_periods(session_id: str, months: list[tuple[str, str]], quarterly: bool = False, progress=None) -> tuple[bytes, str]:
+def failed_periods(session_id: str) -> list[tuple[str, str, str]]:
+    """(month, year, reason) for every period that failed in the last run and has not succeeded since."""
+    state = _sessions.get(session_id) or {}
+    return [(m, y, why) for (m, y), why in (state.get("failed") or {}).items()]
+
+
+def retry_failed(session_id: str, quarterly: bool = False, progress=None) -> tuple[bytes, str]:
+    """Re-run only the periods that failed, then re-merge them with the ones that already succeeded."""
+    state = _sessions[session_id]
+    failed = list((state.get("failed") or {}).keys())
+    if not failed:
+        raise RuntimeError("There are no failed periods to retry.")
+    return download_periods(session_id, state.get("req_months") or failed, quarterly=quarterly,
+                            progress=progress, only=failed)
+
+
+def download_periods(session_id: str, months: list[tuple[str, str]], quarterly: bool = False, progress=None,
+                     only: list[tuple[str, str]] | None = None) -> tuple[bytes, str]:
     """Download each selected period, convert in the background, merge in memory.
 
-    Fast route (direct portal requests) is tried first; any period it cannot serve is retried
-    through the original click-through route, so behaviour never gets worse than before.
+    Fast route (the portal's own requests, replayed from the offline page) is tried first; any period
+    it cannot serve is retried through the click-through route. Failed periods are remembered in the
+    session so `retry_failed` can re-run just those. `only` limits this run to those periods while the
+    merged workbook still includes every period that succeeded earlier in the session.
     """
     state = _sessions[session_id]
     browser, download_dir = state["driver"], state["download_dir"]
-    periods = list(months)
+    periods = [(m, str(y)) for m, y in months]
     if quarterly:
-        periods, _, _, _ = core.resolve_quarterly_periods(periods)
+        periods = [(m, str(y)) for m, y in core.resolve_quarterly_periods(periods)[0]]
+    if only is None:                               # fresh full run
+        state["files"], state["failed"] = {}, {}
+        state["req_months"] = list(months)
+    files: dict = state.setdefault("files", {})
+    failed: dict = state.setdefault("failed", {})
+    targets = [pr for pr in periods if only is None or pr in {(m, str(y)) for m, y in only}]
 
     errors: list[str] = []
-    total = len(periods)
+    total = len(targets)
     timings = {"download": 0.0, "convert_wait": 0.0, "merge": 0.0}
     fast_ok, fast_fails, fast_used, ui_used = True, 0, 0, 0
 
     # One worker: conversion (CPU) overlaps with portal waiting (I/O). Progress is only ever
     # reported from this thread because Streamlit UI calls are not thread-safe.
     pool = ThreadPoolExecutor(max_workers=1)
-    jobs: list[tuple[object, str, int]] = []      # (future, month, year) in period order
+    jobs: dict = {}                                # (month, year) -> future
+
+    def fail(key, reason):
+        failed[key] = reason
+        errors.append(f"{key[0]} {key[1]}: {reason}")
 
     t_dl = time.perf_counter()
-    for index, (month, year) in enumerate(periods, 1):
+    for index, (month, year) in enumerate(targets, 1):
+        key = (month, year)
+
         def cb(pct, message, month=month, year=year, index=index):
             if progress:
                 progress(pct, f"{month} {year} ({index}/{total}) — {message}")
@@ -327,43 +454,54 @@ def download_periods(session_id: str, months: list[tuple[str, str]], quarterly: 
                     fast_fails = 0
                     fast_used += 1
             if status == "fast_unavailable":
+                fast_info = info
                 status, info = core.gst_download_gstr2b_json(
                     browser, month, year, download_dir, is_quarterly=quarterly, progress_callback=cb)
                 ui_used += 1
+                if status != "downloaded" and fast_info:
+                    info = f"{info} [direct route: {str(fast_info)[:140]}]"
         except Exception as exc:
-            errors.append(f"{month} {year}: portal request failed: {str(exc)[:180]}")
+            fail(key, f"portal request failed: {str(exc)[:180]}")
             if progress:
                 progress(100, f"{month} {year} ({index}/{total}) — failed; continuing to next period.")
             continue
 
         if status != "downloaded":
-            errors.append(f"{month} {year}: {info}")
+            fail(key, str(info))
             if progress:
                 progress(100, f"{month} {year} ({index}/{total}) — {info}")
             continue
 
-        path = os.path.join(download_dir, info)
-        jobs.append((pool.submit(core.convert_period_to_workbook, path, quarterly), month, int(year)))
+        failed.pop(key, None)
+        files[key] = os.path.join(download_dir, info)
+        jobs[key] = pool.submit(core.convert_period_to_workbook, files[key], quarterly)
         if progress:
             progress(100, f"Downloaded {month} {year} ({index}/{total}).")
     timings["download"] = time.perf_counter() - t_dl
+
+    # Periods that succeeded in an earlier run are re-converted (the merge consumes its workbooks).
+    for key in periods:
+        if key in files and key not in jobs and os.path.isfile(files[key]):
+            jobs[key] = pool.submit(core.convert_period_to_workbook, files[key], quarterly)
 
     if not jobs:
         pool.shutdown(wait=False)
         raise RuntimeError("No GSTR-2B files were downloaded. " + "; ".join(errors))
 
-    # Most conversions already finished while the portal was being polled; wait for the rest.
     t_cv = time.perf_counter()
     workbooks = []
-    for n, (future, month, year) in enumerate(jobs, 1):
+    ordered = [k for k in periods if k in jobs]
+    for n, key in enumerate(ordered, 1):
+        month, year = key
         if progress:
-            progress(int((n - 1) * 100 / len(jobs)), f"Converting — {month} {year} ({n}/{len(jobs)})…")
+            progress(int((n - 1) * 100 / len(ordered)), f"Converting — {month} {year} ({n}/{len(ordered)})…")
         try:
-            workbooks.append(future.result())
+            workbooks.append(jobs[key].result())
         except Exception as exc:
-            errors.append(f"{month} {year}: conversion failed: {str(exc)[:180]}")
+            files.pop(key, None)
+            fail(key, f"conversion failed: {str(exc)[:180]}")
         if progress:
-            progress(int(n * 100 / len(jobs)), f"Converted {month} {year} ({n}/{len(jobs)}).")
+            progress(int(n * 100 / len(ordered)), f"Converted {month} {year} ({n}/{len(ordered)}).")
     pool.shutdown(wait=True)
     timings["convert_wait"] = time.perf_counter() - t_cv
     if not workbooks:
@@ -385,8 +523,9 @@ def download_periods(session_id: str, months: list[tuple[str, str]], quarterly: 
     description = (f"Prepared {len(workbooks)} period(s) "
                    f"(download {timings['download']:.0f}s, convert wait {timings['convert_wait']:.0f}s, "
                    f"merge {timings['merge']:.0f}s; direct {fast_used}, portal-UI {ui_used}).")
-    if errors:
-        description += " Some periods were skipped: " + "; ".join(errors)
+    if failed:
+        description += (" Failed periods (use 'Retry failed months'): "
+                        + "; ".join(f"{m} {y}: {why}" for (m, y), why in failed.items()))
     return data, description
 
 

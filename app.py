@@ -2291,6 +2291,10 @@ if st.session_state.app_stage == 'setup':
                                         st.session_state.pop(_key, None)
                                     st.rerun()
                         if not _sid:
+                            try:
+                                _g2b.prewarm()  # start Chrome + load portal CAPTCHA while the user types
+                            except Exception:
+                                pass
                             _year_choices = [str(y) for y in range(2020, 2032)]
                             with st.form("backend_gstr2b_login_form"):
                                 _gst_user = st.text_input("GST Portal username")
@@ -2646,6 +2650,24 @@ if st.session_state.app_stage == 'setup':
                                     except Exception as _download_error:
                                         _download_status.update(label="GSTR-2B download failed", state="error", expanded=True)
                                         st.error(f"GSTR-2B download failed: {_download_error}")
+                            _failed_now = _g2b.failed_periods(_sid)
+                            if _failed_now:
+                                st.warning("These months failed: " + "; ".join(f"**{_m} {_y}** — {_why}" for _m, _y, _why in _failed_now))
+                                if st.button(f"🔁 Retry failed months ({len(_failed_now)})", key="backend_gstr2b_retry_failed"):
+                                    _retry_bar = st.progress(0, text="Retrying failed months…")
+                                    try:
+                                        def _retry_progress(_percent, _message):
+                                            _retry_bar.progress(max(0, min(100, int(_percent))) / 100, text=str(_message)[:160])
+                                        _data, _summary = _g2b.retry_failed(
+                                            _sid,
+                                            quarterly=st.session_state.get("backend_gstr2b_quarterly", False),
+                                            progress=_retry_progress,
+                                        )
+                                        st.session_state[_out_key] = _data
+                                        st.session_state["backend_gstr2b_summary"] = _summary
+                                        st.rerun()
+                                    except Exception as _retry_error:
+                                        st.error(f"Retry failed: {_retry_error}. If the portal session expired, close the session and log in again.")
                             if st.session_state.get(_out_key):
                                 st.success(st.session_state.get("backend_gstr2b_summary", "Merged workbook is ready."))
                                 st.download_button(
