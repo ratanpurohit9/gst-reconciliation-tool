@@ -2375,14 +2375,28 @@ if st.session_state.app_stage == 'setup':
                                     f"{_month} {_year}": {"state": "pending", "pct": 0}
                                     for _month, _year in _download_periods
                                 }
+                                # Show the full fiscal-year strip (Apr–Mar); periods outside the
+                                # requested range remain quiet and clearly marked as not selected.
+                                _selected_fy_starts = [
+                                    int(_year) if _g2b.core.MONTHS.index(_month) >= 3 else int(_year) - 1
+                                    for _month, _year in _download_periods
+                                ]
+                                _dashboard_periods = []
+                                for _fy_start in range(min(_selected_fy_starts), max(_selected_fy_starts) + 1):
+                                    for _month_index in list(range(3, 12)) + list(range(0, 3)):
+                                        _dashboard_year = _fy_start if _month_index >= 3 else _fy_start + 1
+                                        _dashboard_periods.append(
+                                            (_g2b.core.MONTHS[_month_index], str(_dashboard_year))
+                                        )
                                 _download_stage = {"name": "download", "overall": 0}
                                 _download_status_map = {
                                     "pending": ("◷", "Pending", "pending"),
                                     "downloading": ("⟳", "Downloading", "active"),
                                     "downloaded": ("✓", "Downloaded", "done"),
-                                    "converting": ("⚙", "Converting", "active"),
+                                    "converting": ("⚙", "Processing", "active"),
                                     "complete": ("✓", "Ready", "done"),
                                     "failed": ("!", "Skipped / failed", "failed"),
+                                    "not-selected": ("·", "Not selected", "quiet"),
                                 }
                                 with st.status("Starting GST Portal download…", expanded=True) as _download_status:
                                     try:
@@ -2453,18 +2467,29 @@ if st.session_state.app_stage == 'setup':
                                                 "complete": "All available files are ready",
                                             }.get(_download_stage["name"], "Working on your download")
                                             _cards = []
-                                            for _month, _year in _download_periods:
+                                            for _month, _year in _dashboard_periods:
                                                 _label = f"{_month} {_year}"
-                                                _info = _period_states[_label]
-                                                _icon, _state_label, _state_class = _download_status_map[_info["state"]]
-                                                _active_class = " current" if _info["state"] in ("downloading", "converting") else ""
-                                                _detail = (
-                                                    f'{_info["pct"]}% portal progress'
-                                                    if _info["state"] == "downloading"
-                                                    else ("Portal file received" if _info["state"] == "downloaded"
-                                                          else ("Preparing workbook" if _info["state"] == "converting"
-                                                                else ("—" if _info["state"] == "pending" else _state_label)))
-                                                )
+                                                _info = _period_states.get(_label)
+                                                if _info is None:
+                                                    _state, _pct = "not-selected", 0
+                                                else:
+                                                    _state, _pct = _info["state"], _info["pct"]
+                                                _icon, _state_label, _state_class = _download_status_map[_state]
+                                                _active_class = " current" if _state in ("downloading", "converting") else ""
+                                                if _state == "downloading":
+                                                    _detail = f"{_pct}% workflow"
+                                                elif _state == "downloaded":
+                                                    _detail = "Portal file received"
+                                                elif _state == "converting":
+                                                    _detail = "Preparing workbook"
+                                                elif _state == "complete":
+                                                    _detail = "Excel ready"
+                                                elif _state == "failed":
+                                                    _detail = "Check download summary"
+                                                elif _state == "not-selected":
+                                                    _detail = "Outside selected range"
+                                                else:
+                                                    _detail = "Waiting"
                                                 _cards.append(
                                                     f'<div class="g2b-period {_state_class}{_active_class}">'
                                                     f'<div class="g2b-period-icon">{_icon}</div>'
@@ -2472,52 +2497,133 @@ if st.session_state.app_stage == 'setup':
                                                     f'<span class="g2b-period-state">{_state_label}</span>'
                                                     f'<small>{html.escape(_detail)}</small></div>'
                                                 )
-                                            _celebrate = " 🎉" if _download_stage["name"] == "complete" else ""
+                                            _all_success = bool(_period_states) and all(
+                                                _state["state"] == "complete" for _state in _period_states.values()
+                                            )
+                                            _has_failed = any(_state["state"] == "failed" for _state in _period_states.values())
+                                            if _download_stage["name"] == "complete":
+                                                _stage_title = (
+                                                    "All GSTR-2B periods downloaded successfully"
+                                                    if _all_success
+                                                    else ("Workbook ready · some periods were skipped"
+                                                          if _has_failed else "GSTR-2B workbook is ready")
+                                                )
+                                            _celebrate = " ✨" if _all_success else ""
                                             _download_visual.markdown(
                                                 f"""
                                                 <section class="g2b-live-dashboard">
                                                   <header class="g2b-live-heading">
-                                                    <div><div class="g2b-live-kicker">GST PORTAL · LIVE DOWNLOAD</div>
-                                                    <h2>{_stage_title}{_celebrate}</h2>
-                                                    <p>{_safe_message}</p></div>
-                                                    <div class="g2b-live-percent">{_overall}%</div>
+                                                    <div>
+                                                      <div class="g2b-live-kicker"><span class="g2b-pulse"></span> GST PORTAL · LIVE DOWNLOAD</div>
+                                                      <h2>{_stage_title}{_celebrate}</h2>
+                                                      <p>{_safe_message}</p>
+                                                    </div>
+                                                    <div class="g2b-live-percent">{_overall}<small>%</small></div>
                                                   </header>
-                                                  <div class="g2b-progress-track"><div class="g2b-progress-fill" style="width:{_overall}%"></div>
-                                                    <span class="g2b-runner" style="left:calc({_overall}% - 15px)">🏃🏻‍♂️</span></div>
-                                                  <div class="g2b-track-label"><span>Portal workflow progress</span>
-                                                    <span>{_overall} / 100</span></div>
-                                                  <div class="g2b-conveyor"><div class="g2b-machine">📥<small>GSTR-2B</small></div>
-                                                    <div class="g2b-belt"><span>📄</span><span>📄</span><span>📄</span><span>📄</span></div>
-                                                    <div class="g2b-folder">📁<small>Excel</small></div></div>
+                                                  <div class="g2b-progress-track">
+                                                    <div class="g2b-progress-fill" style="width:{_overall}%"></div>
+                                                    <span class="g2b-runner" style="left:calc({_overall}% - 18px)">➤</span>
+                                                  </div>
+                                                  <div class="g2b-track-label">
+                                                    <span>Portal workflow progress · not byte-level</span><span>{_overall} / 100</span>
+                                                  </div>
+                                                  <div class="g2b-scene">
+                                                    <div class="g2b-portal-node">
+                                                      <div class="g2b-browser-window"><div class="g2b-browser-dots"><i></i><i></i><i></i></div>
+                                                        <div class="g2b-browser-lines"><b></b><span></span><span></span></div>
+                                                        <div class="g2b-portal-lock">✓</div></div>
+                                                      <b>GST PORTAL</b><small>Authenticated session</small>
+                                                    </div>
+                                                    <div class="g2b-flow-arrow">›</div>
+                                                    <div class="g2b-engine">
+                                                      <div class="g2b-engine-top"><span class="g2b-light"></span><span class="g2b-engine-title">GSTR-2B DOWNLOAD ENGINE</span><span class="g2b-gear">⚙</span></div>
+                                                      <div class="g2b-engine-mouth"><span class="g2b-engine-file">2B</span></div>
+                                                      <div class="g2b-conveyor"><span class="g2b-moving-doc">▤</span><span class="g2b-moving-doc">▤</span><span class="g2b-moving-doc">▤</span><span class="g2b-moving-doc">▤</span></div>
+                                                    </div>
+                                                    <div class="g2b-flow-arrow">›</div>
+                                                    <div class="g2b-operator" aria-label="Animated accounting assistant">
+                                                      <div class="g2b-person"><div class="g2b-person-hair"></div><div class="g2b-person-face"><i></i><i></i></div><div class="g2b-person-shirt"><b></b></div></div>
+                                                      <div class="g2b-laptop">GST</div><small>Preparing files</small>
+                                                    </div>
+                                                    <div class="g2b-flow-arrow">›</div>
+                                                    <div class="g2b-excel-node"><div class="g2b-folder-shape"><span>X</span><i></i><i></i></div><b>MERGED EXCEL</b><small>Ready to download</small></div>
+                                                  </div>
+                                                  <div class="g2b-month-heading"><b>Financial year periods</b><span>Selected months update from actual portal events</span></div>
                                                   <div class="g2b-period-grid">{''.join(_cards)}</div>
-                                                  <div class="g2b-live-note">Status updates come from the portal download, file arrival, conversion, and merge steps. The portal does not provide byte-level download percentages.</div>
+                                                  <div class="g2b-live-note">Month states update from the real portal request, file arrival, conversion, and merge callbacks. The GST Portal does not expose byte-level download percentages.</div>
                                                 </section>
                                                 <style>
-                                                  .g2b-live-dashboard{{font-family:Arial,sans-serif;border:1px solid #c9ddf6;border-radius:18px;padding:20px;background:linear-gradient(145deg,#f8fcff,#eaf4ff);box-shadow:0 8px 24px #122e5014;margin:10px 0 16px}}
-                                                  .g2b-live-heading{{display:flex;justify-content:space-between;align-items:center;gap:16px;color:#10245a}}
-                                                  .g2b-live-kicker{{font-size:10px;letter-spacing:1.3px;color:#2472c8;font-weight:800}}
-                                                  .g2b-live-heading h2{{font-size:22px;margin:4px 0}} .g2b-live-heading p{{margin:0;color:#50627d;font-size:13px}}
+                                                  .g2b-live-dashboard{{font-family:Arial,sans-serif;border:1px solid #c9ddf6;border-radius:20px;padding:22px;background:radial-gradient(ellipse at 48% 43%,#f1f8ff 0,#fff 72%);box-shadow:0 10px 30px #122e5014;margin:10px 0 16px;color:#10245a}}
+                                                  .g2b-live-heading{{display:flex;justify-content:space-between;align-items:center;gap:16px}}
+                                                  .g2b-live-kicker{{font-size:10px;letter-spacing:1.3px;color:#2472c8;font-weight:800;display:flex;align-items:center;gap:7px}}
+                                                  .g2b-pulse{{width:8px;height:8px;border-radius:50%;background:#18b77b;box-shadow:0 0 0 0 #18b77b66;animation:g2b-pulse 1.5s infinite}}
+                                                  .g2b-live-heading h2{{font-size:22px;margin:6px 0;color:#10245a}}
+                                                  .g2b-live-heading p{{margin:0;color:#50627d;font-size:13px;min-height:17px}}
                                                   .g2b-live-percent{{font-size:34px;font-weight:800;color:#176fe5;min-width:84px;text-align:right}}
-                                                  .g2b-progress-track{{height:18px;position:relative;border-radius:12px;background:#dce7f4;margin:20px 8px 5px;overflow:visible}}
-                                                  .g2b-progress-fill{{height:100%;border-radius:12px;background:linear-gradient(90deg,#40a4ff,#176fe5);transition:width .35s ease;box-shadow:0 2px 9px #2083e555}}
-                                                  .g2b-runner{{position:absolute;top:-17px;font-size:25px;transition:left .35s ease;animation:g2b-run .45s ease-in-out infinite alternate}}
-                                                  .g2b-track-label{{display:flex;justify-content:space-between;color:#64748b;font-size:11px;margin:0 8px 14px}}
-                                                  .g2b-conveyor{{display:flex;align-items:center;gap:14px;background:linear-gradient(#dff0ff,#eff8ff);border:1px solid #d1e4f8;border-radius:14px;padding:10px 14px;margin:10px 0 14px}}
-                                                  .g2b-machine,.g2b-folder{{font-size:25px;text-align:center;color:#14366c;min-width:68px}}
-                                                  .g2b-machine small,.g2b-folder small{{display:block;font-size:9px;font-weight:700}}
-                                                  .g2b-belt{{height:35px;flex:1;overflow:hidden;border-radius:8px;background:#193d6c;display:flex;align-items:center;justify-content:space-around;box-shadow:inset 0 4px 7px #071a37}}
-                                                  .g2b-belt span{{font-size:21px;animation:g2b-doc 1.4s linear infinite}} .g2b-belt span:nth-child(2){{animation-delay:.25s}} .g2b-belt span:nth-child(3){{animation-delay:.5s}} .g2b-belt span:nth-child(4){{animation-delay:.75s}}
-                                                  .g2b-period-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px}}
-                                                  .g2b-period{{min-height:116px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;text-align:center;padding:9px 5px;border:1px solid #dce6f2;border-radius:12px;background:#ffffffb8;color:#172d5b}}
-                                                  .g2b-period-icon{{font-size:21px;color:#9aa9bd}} .g2b-period-state{{font-size:11px;color:#74839a}}
-                                                  .g2b-period small{{font-size:10px;color:#6c7d95}} .g2b-period.done{{border-color:#b8e7d0;background:#f2fff8}} .g2b-period.done .g2b-period-icon,.g2b-period.done .g2b-period-state{{color:#09985c}}
-                                                  .g2b-period.current{{border:2px solid #2779f5;background:#f5faff}} .g2b-period.current .g2b-period-icon{{color:#2779f5;animation:g2b-spin 1.2s linear infinite}}
+                                                  .g2b-live-percent small{{font-size:15px;margin-left:2px}}
+                                                  .g2b-progress-track{{height:14px;position:relative;border-radius:12px;background:#e3ebf5;margin:20px 8px 5px;overflow:visible}}
+                                                  .g2b-progress-fill{{height:100%;border-radius:12px;background:linear-gradient(90deg,#51b0ff,#176fe5);transition:width .45s ease;box-shadow:0 2px 12px #2083e566}}
+                                                  .g2b-runner{{position:absolute;top:-12px;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:white;color:#1473dc;font-size:15px;box-shadow:0 2px 8px #14467944;transition:left .45s ease;animation:g2b-run .5s ease-in-out infinite alternate}}
+                                                  .g2b-track-label{{display:flex;justify-content:space-between;color:#64748b;font-size:10px;margin:0 8px 13px}}
+                                                  .g2b-scene{{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;margin:8px 0 16px;border:1px solid #d6e7f7;border-radius:18px;background:linear-gradient(180deg,#f5fbff,#eaf4ff);min-height:150px;overflow:hidden}}
+                                                  .g2b-portal-node,.g2b-excel-node{{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-width:104px;font-size:11px;color:#14366c;text-align:center}}
+                                                  .g2b-portal-node small,.g2b-excel-node small,.g2b-operator small{{font-size:9px;color:#71839c}}
+                                                  .g2b-browser-window{{position:relative;width:84px;height:56px;border:2px solid #2b67ae;border-radius:8px;background:#fff;box-shadow:0 5px 10px #17416b22;overflow:hidden}}
+                                                  .g2b-browser-dots{{height:12px;background:#dcecff;display:flex;align-items:center;gap:3px;padding:0 5px}}
+                                                  .g2b-browser-dots i{{width:4px;height:4px;border-radius:50%;background:#72a4df}}
+                                                  .g2b-browser-lines{{padding:7px 8px;display:flex;flex-direction:column;gap:4px}}
+                                                  .g2b-browser-lines b,.g2b-browser-lines span{{height:4px;border-radius:4px;background:#d9e6f4;width:74%}}
+                                                  .g2b-browser-lines span:last-child{{width:48%}}
+                                                  .g2b-portal-lock{{position:absolute;right:5px;bottom:5px;background:#14ae79;color:white;width:17px;height:17px;border-radius:50%;font-weight:800;font-size:11px;display:grid;place-items:center}}
+                                                  .g2b-flow-arrow{{color:#85a4c8;font-size:26px;font-weight:300;animation:g2b-arrow 1.3s ease-in-out infinite}}
+                                                  .g2b-engine{{flex:1;max-width:310px;min-width:190px;background:linear-gradient(135deg,#214e83,#102d55);border:3px solid #92b8df;border-radius:13px;padding:0 10px 9px;box-shadow:0 8px 16px #0e31552b;position:relative}}
+                                                  .g2b-engine-top{{height:31px;display:flex;align-items:center;justify-content:space-between;color:white;font-size:9px;font-weight:800;letter-spacing:.5px}}
+                                                  .g2b-light{{width:9px;height:9px;border-radius:50%;background:#ffba47;box-shadow:0 0 10px #ffbd4f;animation:g2b-light 1s ease-in-out infinite alternate}}
+                                                  .g2b-gear{{display:inline-block;color:#bcd7f3;font-size:17px;animation:g2b-spin 5s linear infinite}}
+                                                  .g2b-engine-mouth{{height:35px;background:#f6fbff;border-radius:8px 8px 2px 2px;display:grid;place-items:center;overflow:hidden}}
+                                                  .g2b-engine-file{{font-size:11px;color:#1f548e;font-weight:900;letter-spacing:1px;animation:g2b-file-pulse 1.3s ease-in-out infinite}}
+                                                  .g2b-conveyor{{height:21px;margin-top:5px;border-radius:5px;background:repeating-linear-gradient(90deg,#143458 0 18px,#315e89 18px 22px);display:flex;align-items:center;justify-content:space-around;overflow:hidden;position:relative}}
+                                                  .g2b-moving-doc{{color:white;font-size:13px;animation:g2b-doc 1.7s linear infinite}}
+                                                  .g2b-moving-doc:nth-child(2){{animation-delay:.4s}} .g2b-moving-doc:nth-child(3){{animation-delay:.8s}} .g2b-moving-doc:nth-child(4){{animation-delay:1.2s}}
+                                                  .g2b-operator{{position:relative;width:84px;height:110px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;animation:g2b-work 1.4s ease-in-out infinite}}
+                                                  .g2b-person{{position:relative;width:47px;height:65px}}
+                                                  .g2b-person-hair{{position:absolute;z-index:2;top:3px;left:11px;width:29px;height:16px;border-radius:16px 15px 7px 4px;background:#4f3a36;transform:rotate(-8deg)}}
+                                                  .g2b-person-face{{position:absolute;top:10px;left:12px;width:28px;height:31px;border-radius:45% 45% 48% 48%;background:#f3c49a;border:1px solid #d9a47f}}
+                                                  .g2b-person-face i{{position:absolute;top:11px;left:7px;width:3px;height:4px;background:#253754;border-radius:50%}}
+                                                  .g2b-person-face i:last-child{{left:18px}}
+                                                  .g2b-person-shirt{{position:absolute;bottom:0;left:2px;width:46px;height:27px;border-radius:20px 20px 3px 3px;background:#f7fbff;border:1px solid #b7cde5}}
+                                                  .g2b-person-shirt b{{position:absolute;top:2px;left:20px;width:7px;height:18px;background:#2479cc;clip-path:polygon(0 0,100% 0,75% 100%,50% 78%,25% 100%)}}
+                                                  .g2b-laptop{{position:absolute;bottom:15px;left:36px;width:38px;height:25px;border-radius:5px 5px 2px 2px;background:#173f70;color:#8bd6ff;font-size:9px;font-weight:800;display:grid;place-items:center;box-shadow:0 4px 0 #829ab4}}
+                                                  .g2b-operator small{{position:absolute;bottom:0;white-space:nowrap}}
+                                                  .g2b-folder-shape{{position:relative;width:59px;height:43px;border-radius:5px 7px 8px 8px;background:#1eae71;border:2px solid #118456;box-shadow:0 5px 10px #16865535;display:flex;align-items:center;justify-content:center}}
+                                                  .g2b-folder-shape:before{{content:"";position:absolute;left:2px;top:-8px;width:24px;height:9px;border-radius:4px 4px 0 0;background:#31c684}}
+                                                  .g2b-folder-shape span{{color:white;font-weight:900;font-size:16px;z-index:1}}
+                                                  .g2b-folder-shape i{{position:absolute;width:14px;height:19px;background:#fff;border:1px solid #cde1d8;right:-10px;top:-12px;transform:rotate(8deg)}}
+                                                  .g2b-folder-shape i:last-child{{right:-6px;top:-9px;transform:rotate(-5deg)}}
+                                                  .g2b-month-heading{{display:flex;align-items:center;justify-content:space-between;margin:4px 0 9px;color:#243c65;font-size:12px}}
+                                                  .g2b-month-heading span{{font-size:10px;color:#71839c;font-weight:400}}
+                                                  .g2b-period-grid{{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:7px}}
+                                                  .g2b-period{{min-height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;padding:7px 3px;border:1px solid #dce6f2;border-radius:12px;background:#ffffffc9;color:#172d5b;transition:border-color .3s,box-shadow .3s,background .3s;min-width:0}}
+                                                  .g2b-period-icon{{font-size:20px;color:#9aa9bd;line-height:23px}}
+                                                  .g2b-period-state{{font-size:10px;color:#74839a}} .g2b-period small{{font-size:9px;color:#6c7d95}}
+                                                  .g2b-period.done{{border-color:#b8e7d0;background:#f2fff8}} .g2b-period.done .g2b-period-icon{{color:#10aa6b;animation:g2b-check .35s ease-out}} .g2b-period.done .g2b-period-state{{color:#09985c}}
+                                                  .g2b-period.current{{border:2px solid #2779f5;background:#f5faff;box-shadow:0 0 0 3px #2779f51a,0 5px 14px #2779f522;animation:g2b-glow 1.8s ease-in-out infinite}}
+                                                  .g2b-period.current .g2b-period-icon{{color:#2779f5;animation:g2b-spin 1.2s linear infinite}}
                                                   .g2b-period.failed{{border-color:#f4c2bd;background:#fff8f7}} .g2b-period.failed .g2b-period-icon,.g2b-period.failed .g2b-period-state{{color:#c0392b}}
+                                                  .g2b-period.quiet{{background:#f9fbfd;color:#8290a4;border-style:dashed;opacity:.72}}
                                                   .g2b-live-note{{font-size:10px;color:#74839a;margin-top:12px}}
-                                                  @keyframes g2b-run{{from{{transform:translateY(0)}}to{{transform:translateY(-5px)}}}}
-                                                  @keyframes g2b-doc{{from{{transform:translateX(14px)}}to{{transform:translateX(-14px)}}}}
+                                                  @keyframes g2b-pulse{{50%{{box-shadow:0 0 0 6px #18b77b12}}}}
+                                                  @keyframes g2b-run{{from{{transform:translateY(0)}}to{{transform:translateY(-4px)}}}}
+                                                  @keyframes g2b-doc{{0%{{transform:translateX(-24px);opacity:0}}15%{{opacity:1}}85%{{opacity:1}}100%{{transform:translateX(24px);opacity:0}}}}
                                                   @keyframes g2b-spin{{to{{transform:rotate(360deg)}}}}
-                                                  @media(max-width:640px){{.g2b-live-heading h2{{font-size:18px}}.g2b-live-percent{{font-size:27px}}.g2b-period-grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}
+                                                  @keyframes g2b-arrow{{50%{{transform:translateX(3px);color:#3583dc}}}}
+                                                  @keyframes g2b-light{{to{{background:#38d49a;box-shadow:0 0 12px #38d49a}}}}
+                                                  @keyframes g2b-file-pulse{{50%{{transform:translateY(-4px);opacity:.7}}}}
+                                                  @keyframes g2b-work{{50%{{transform:translateY(-3px)}}}}
+                                                  @keyframes g2b-check{{0%{{transform:scale(.4);opacity:.2}}80%{{transform:scale(1.2)}}100%{{transform:scale(1);opacity:1}}}}
+                                                  @keyframes g2b-glow{{50%{{box-shadow:0 0 0 4px #2779f522,0 5px 17px #2779f544}}}}
+                                                  @media(max-width:1100px){{.g2b-period-grid{{grid-template-columns:repeat(6,minmax(0,1fr))}}}}
+                                                  @media(max-width:640px){{.g2b-live-heading h2{{font-size:18px}}.g2b-live-percent{{font-size:27px}}.g2b-scene{{gap:5px;padding:10px 6px}}.g2b-portal-node,.g2b-excel-node{{min-width:55px;font-size:9px}}.g2b-browser-window{{width:58px}}.g2b-engine{{min-width:90px;padding:0 5px 6px}}.g2b-engine-title{{font-size:7px}}.g2b-operator{{display:none}}.g2b-flow-arrow{{font-size:17px}}.g2b-period-grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}
                                                 </style>
                                                 """,
                                                 unsafe_allow_html=True,
