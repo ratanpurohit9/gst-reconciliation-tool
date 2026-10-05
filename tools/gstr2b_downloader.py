@@ -624,7 +624,7 @@ def wait_new_file(folder, before, timeout, progress_callback=None, start_percent
         new = [f for f in (list_files(folder) - before)
                if not f.lower().endswith((".crdownload", ".tmp"))]
         if new:
-            time.sleep(1.0)
+            time.sleep(0.4)
             if progress_callback:
                 progress_callback(98, "File received; checking that the download is complete…")
             return new[0]
@@ -635,7 +635,7 @@ def wait_new_file(folder, before, timeout, progress_callback=None, start_percent
             if percent != last_reported:
                 progress_callback(percent, f"Waiting for GST Portal file… {int(elapsed)}s elapsed")
                 last_reported = percent
-        time.sleep(0.5)
+        time.sleep(0.25)
     return None
 
 
@@ -669,16 +669,30 @@ def gst_select(driver, names, index, text, starts=False):
         sels = [e for e in driver.find_elements(By.TAG_NAME, "select") if e.is_displayed()]
         return sels[index] if len(sels) > index else None
 
-    el = find()
+    def match(o):
+        t = o.text.strip()
+        return t.startswith(text) if starts else t == text
+
+    # Dependent dropdowns (Quarter/Period) repopulate after the previous change.
+    # Poll for the wanted option instead of sleeping a fixed time.
+    end = time.time() + 12
+    el = target = sel = None
+    while True:
+        try:
+            el = find()
+            if el is not None:
+                sel = Select(el)
+                target = next((o for o in sel.options if match(o)), None)
+                if target is not None:
+                    break
+        except Exception:
+            pass          # stale element while the portal re-renders; retry
+        if time.time() >= end:
+            break
+        time.sleep(0.2)
+
     if el is None:
         raise RuntimeError(f"Dropdown '{names[0]}' not found")
-    sel = Select(el)
-    target = None
-    for o in sel.options:
-        t = o.text.strip()
-        if (t.startswith(text) if starts else t == text):
-            target = o
-            break
     if target is None:
         have = [o.text.strip() for o in sel.options][:8]
         raise RuntimeError(f"Option '{text}' not in dropdown '{names[0]}' (Available: {have})")
@@ -689,7 +703,7 @@ def gst_select(driver, names, index, text, starts=False):
         sel.select_by_value(val)
     else:
         target.click()
-    time.sleep(1.5)
+    time.sleep(0.4)       # short settle; the next gst_select polls for its own option
 
 
 from openpyxl import Workbook
@@ -820,17 +834,24 @@ def _sheet(wb, name, sub, ncols, hdr_spec, hdr_rows, widths=None):
     return ws
 
 
+_F_BODY = Font(name="Calibri", size=11)
+_A_NUM = Alignment(horizontal="right", vertical="bottom")
+_A_LEFT = Alignment(horizontal="left")
+_A_RIGHT = Alignment(horizontal="right")
+
+
 def _put(ws, row, values, num_cols=(), text_cols=()):
+    # Shared style objects: creating Font/Alignment per cell was a big conversion cost.
     for i, v in enumerate(values, 1):
         c = ws.cell(row, i, v)
-        c.font = Font(name="Calibri", size=11)
+        c.font = _F_BODY
         if i in num_cols:
             c.number_format = NUM
-            c.alignment = Alignment(horizontal="right", vertical="bottom")
+            c.alignment = _A_NUM
         elif i in text_cols:
-            c.alignment = Alignment(horizontal="left")
+            c.alignment = _A_LEFT
         else:
-            c.alignment = Alignment(horizontal="right")
+            c.alignment = _A_RIGHT
 
 
 # ---------------------------------------------------------------- summary sheets
@@ -1332,23 +1353,30 @@ def convert_json_to_portal_excel(data, excel_path, quarterly=False):
     return wb
 
 
-def convert_and_save_period_excel(raw_file_path, excel_path, period_label="", quarterly=False):
-    """
-    Takes a downloaded GSTR-2B .json (or .zip containing it) and writes a portal-style Excel
-    (ITC Available / ITC not available / ITC Rejected / B2B / B2BA / B2B-CDNR / ... sheets).
-    Returns excel_path.
-    """
+def _load_period_json(raw_file_path):
     if raw_file_path.lower().endswith(".zip"):
         with zipfile.ZipFile(raw_file_path, "r") as z:
             json_files = [f for f in z.namelist() if f.lower().endswith(".json")]
             if not json_files:
                 raise RuntimeError("No JSON file found inside downloaded zip.")
             with z.open(json_files[0]) as jf:
-                data = json.load(jf)
-    else:
-        with open(raw_file_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    convert_json_to_portal_excel(data, excel_path, quarterly=quarterly)
+                return json.load(jf)
+    with open(raw_file_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def convert_period_to_workbook(raw_file_path, quarterly=False):
+    """JSON (or zip) -> in-memory portal-style Workbook. No save, no re-load."""
+    return build_portal_workbook(_load_period_json(raw_file_path), quarterly=quarterly)
+
+
+def convert_and_save_period_excel(raw_file_path, excel_path, period_label="", quarterly=False):
+    """
+    Takes a downloaded GSTR-2B .json (or .zip containing it) and writes a portal-style Excel
+    (ITC Available / ITC not available / ITC Rejected / B2B / B2BA / B2B-CDNR / ... sheets).
+    Returns excel_path.
+    """
+    convert_json_to_portal_excel(_load_period_json(raw_file_path), excel_path, quarterly=quarterly)
     return excel_path
 
 
@@ -1358,34 +1386,44 @@ _DETAIL_FIRST_ROW = {"B2B": 7, "B2BA": 8, "B2B-CDNR": 7, "B2B-CDNRA": 8, "ISD": 
 _SUMMARY_SHEETS = ["ITC Available", "ITC not available", "ITC Rejected"]
 
 
-def merge_all_gstr2b_periods(period_excel_paths, output_excel_path):
+def merge_period_workbooks(workbooks, output_excel_path):
     """
-    Merges the per-period portal-style workbooks into one workbook:
+    Merges in-memory per-period workbooks into the first one and saves it:
       - detail sheets (B2B, B2B-CDNR, ...) are stacked one period after another (the 'Period' column tells which)
       - ITC summary sheets are added up across periods
+    Same output as before, but without saving/re-opening every period file and without per-cell style copies.
     """
     from copy import copy
-    from openpyxl import load_workbook
 
-    paths = list(period_excel_paths)
-    base = load_workbook(paths[0])
-    for p in paths[1:]:
-        wb = load_workbook(p)
+    wbs = list(workbooks)
+    base = wbs[0]
+    next_row = {}
+    for name, first in _DETAIL_FIRST_ROW.items():
+        if name in base.sheetnames:
+            dst = base[name]
+            nxt = max(dst.max_row + 1, first)
+            while nxt > first and all(dst.cell(nxt - 1, c).value in (None, "") for c in range(1, dst.max_column + 1)):
+                nxt -= 1
+            next_row[name] = nxt
+
+    for wb in wbs[1:]:
         for name, first in _DETAIL_FIRST_ROW.items():
             if name not in base.sheetnames or name not in wb.sheetnames:
                 continue
             src, dst = wb[name], base[name]
-            nxt = max(dst.max_row + 1, first)
-            while nxt > first and all(dst.cell(nxt - 1, c).value in (None, "") for c in range(1, dst.max_column + 1)):
-                nxt -= 1
-            for r in range(first, src.max_row + 1):
-                if all(src.cell(r, c).value in (None, "") for c in range(1, src.max_column + 1)):
+            nxt = next_row[name]
+            tmpl = None                      # styles are uniform per column (see _put) -> copy once per sheet
+            for row in src.iter_rows(min_row=first, max_row=src.max_row):
+                if all(c.value in (None, "") for c in row):
                     continue
-                for c in range(1, src.max_column + 1):
-                    s, d = src.cell(r, c), dst.cell(nxt, c)
-                    d.value = s.value
-                    d.font, d.alignment, d.number_format = copy(s.font), copy(s.alignment), s.number_format
+                if tmpl is None:
+                    tmpl = [(copy(c.font), copy(c.alignment), c.number_format) for c in row]
+                for c, cell in enumerate(row, 1):
+                    d = dst.cell(nxt, c, cell.value)
+                    f, a, nf = tmpl[c - 1]
+                    d.font, d.alignment, d.number_format = f, a, nf
                 nxt += 1
+            next_row[name] = nxt
         for name in _SUMMARY_SHEETS:
             if name not in base.sheetnames or name not in wb.sheetnames:
                 continue
@@ -1399,6 +1437,12 @@ def merge_all_gstr2b_periods(period_excel_paths, output_excel_path):
     os.makedirs(os.path.dirname(os.path.abspath(output_excel_path)), exist_ok=True)
     base.save(output_excel_path)
     return output_excel_path
+
+
+def merge_all_gstr2b_periods(period_excel_paths, output_excel_path):
+    """File-based wrapper kept for compatibility (desktop flow / older callers)."""
+    from openpyxl import load_workbook
+    return merge_period_workbooks([load_workbook(p) for p in period_excel_paths], output_excel_path)
 
 
 # ----------------------------------------------------------------------------
@@ -1436,15 +1480,18 @@ def go_back_to_returns_dashboard(driver):
     ]
     clicked = click_xpath(driver, back_xps, timeout=8)
     if clicked:
-        time.sleep(2)
         dismiss_alert(driver)
-        dismiss_gst_popups(driver)
         try:
-            WebDriverWait(driver, 15).until(
+            WebDriverWait(driver, 15, poll_frequency=0.25).until(
                 lambda d: any(e.is_displayed() for e in d.find_elements(By.TAG_NAME, "select")))
             return True
         except TimeoutException:
-            pass
+            dismiss_gst_popups(driver)       # a popup may be hiding the dashboard
+            try:
+                if any(e.is_displayed() for e in driver.find_elements(By.TAG_NAME, "select")):
+                    return True
+            except Exception:
+                pass
 
     # Fallback: open the returns dashboard directly
     try:
@@ -1468,7 +1515,17 @@ def on_offline_download_page(driver):
 
 
 
+def _dashboard_form_visible(driver):
+    try:
+        return ("return.gst.gov.in" in driver.current_url.lower()
+                and any(e.is_displayed() for e in driver.find_elements(By.TAG_NAME, "select")))
+    except Exception:
+        return False
+
+
 def navigate_to_returns_dashboard(driver):
+    if _dashboard_form_visible(driver):      # already on FY/Quarter/Period form: nothing to do
+        return
     dismiss_gst_popups(driver)
     if on_offline_download_page(driver):
         go_back_to_returns_dashboard(driver)
@@ -1511,7 +1568,6 @@ def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False, 
     )
     if "login" in driver.current_url.lower():
         return "session_expired", "Session expired"
-    time.sleep(1.5)
 
     # Select FY, Quarter, Period
     report(18, "Selecting financial year and return period…")
@@ -1523,11 +1579,15 @@ def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False, 
     # Click SEARCH
     if not click_xpath(driver, ["//button[contains(normalize-space(.), 'SEARCH') or contains(.,'Search')]"], timeout=10):
         return "error", "SEARCH button not found"
-    time.sleep(2.5)
 
     report(42, "Checking GSTR-2B availability…")
-    # Check if GSTR-2B tile is present
+    # Check if GSTR-2B tile is present (wait for it instead of a fixed 2.5s sleep)
     tile_xps = ["//*[contains(text(),'GSTR-2B') or contains(text(),'GSTR2B')]"]
+    try:
+        WebDriverWait(driver, 12, poll_frequency=0.25).until(
+            lambda d: d.find_elements(By.XPATH, tile_xps[0]))
+    except TimeoutException:
+        pass
     tiles = driver.find_elements(By.XPATH, tile_xps[0])
     if not tiles:
         if is_quarterly and m_no not in [3, 6, 9, 12]:
@@ -1549,10 +1609,7 @@ def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False, 
         ]
         click_xpath(driver, view_xps, timeout=10)
 
-    time.sleep(3)
-    dismiss_gst_popups(driver)
-
-    # Offline Download page
+    # Offline Download page (no fixed sleep: the button search below waits; popups only if needed)
     before = list_files(temp_dir)
 
     json_dl_xps = [
@@ -1564,11 +1621,12 @@ def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False, 
     ]
 
     report(58, "Requesting the GSTR-2B JSON file…")
-    if not click_xpath(driver, json_dl_xps, timeout=15):
-        go_back_to_returns_dashboard(driver)
-        return "error", "GENERATE JSON FILE TO DOWNLOAD button not found on download page"
+    if not click_xpath(driver, json_dl_xps, timeout=6):
+        dismiss_gst_popups(driver)           # a popup may be covering the page
+        if not click_xpath(driver, json_dl_xps, timeout=15):
+            go_back_to_returns_dashboard(driver)
+            return "error", "GENERATE JSON FILE TO DOWNLOAD button not found on download page"
 
-    time.sleep(2)
     dismiss_alert(driver)
 
     result = None
@@ -1592,6 +1650,87 @@ def gst_download_gstr2b_json(driver, month, year, temp_dir, is_quarterly=False, 
     # Press BACK so the Returns dashboard (FY / Quarter / Period / SEARCH) is shown for the next period
     go_back_to_returns_dashboard(driver)
     return result
+
+
+# ----------------------------------------------------------------------------
+# FAST route: direct portal requests after the manual CAPTCHA/OTP login
+# ----------------------------------------------------------------------------
+G2B_HOST = "https://gstr2b.gst.gov.in"
+
+_FETCH_JS = """
+const url = arguments[0], done = arguments[arguments.length - 1];
+fetch(url, {credentials: 'include',
+            headers: {'Accept': 'application/json, text/plain, */*',
+                      'X-Requested-With': 'XMLHttpRequest'}})
+  .then(async r => done({status: r.status, body: await r.text()}))
+  .catch(e => done({status: 0, body: String(e)}));
+"""
+
+
+def _portal_get(driver, path):
+    driver.set_script_timeout(90)
+    return driver.execute_async_script(_FETCH_JS, G2B_HOST + path)
+
+
+def gst_fast_open_origin(driver):
+    """Put the logged-in browser on the gstr2b.gst.gov.in origin so fetch() is same-origin."""
+    if "gstr2b.gst.gov.in" in driver.current_url.lower():
+        return True
+    driver.get(G2B_HOST + "/services/api/ustatus?adhrflag=N")
+    return "gstr2b.gst.gov.in" in driver.current_url.lower()
+
+
+def gst_download_gstr2b_json_fast(driver, month, year, temp_dir, is_quarterly=False, progress_callback=None):
+    """
+    Same contract as gst_download_gstr2b_json -> (status, filename_or_error_info), but uses the
+    portal's own background requests (getuserdtls + getjson) instead of clicking through pages.
+    Returns status "fast_unavailable" when the direct route cannot be used, so the caller can
+    fall back to the UI route for that period.
+    """
+    def report(percent, message):
+        if progress_callback:
+            progress_callback(percent, message)
+
+    m_no = MONTHS.index(month) + 1
+    if is_quarterly and m_no not in (3, 6, 9, 12):
+        return "only_2a", f"GSTR-2B not present for {month} {year} (Quarterly filer: available in quarter-end month)"
+
+    fy_start = int(year) if m_no >= 4 else int(year) - 1
+    fy = f"{fy_start}-{str(fy_start + 1)[2:]}"
+    rtnprd = f"{m_no:02d}{year}"
+
+    try:
+        if not gst_fast_open_origin(driver):
+            return "fast_unavailable", "Could not open GSTR-2B portal origin"
+        report(30, "Checking period…")
+        d = _portal_get(driver, f"/gstr2b/auth/api/gstr2b/getuserdtls?rtnprd={rtnprd}&fy={fy}")
+        if d.get("status") in (401, 403):
+            return "fast_unavailable", f"getuserdtls HTTP {d['status']}"
+        report(60, "Fetching GSTR-2B JSON…")
+        j = _portal_get(driver, f"/gstr2b/auth/api/gstr2b/getjson?rtnprd={rtnprd}")
+    except Exception as exc:
+        return "fast_unavailable", f"direct request failed: {str(exc)[:150]}"
+
+    status, body = j.get("status"), j.get("body") or ""
+    if status != 200:
+        return "fast_unavailable", f"getjson HTTP {status}: {body[:150]}"
+    try:
+        obj = json.loads(body)
+    except Exception:
+        return "fast_unavailable", f"getjson did not return JSON: {body[:150]}"
+
+    root = obj.get("data", obj) if isinstance(obj, dict) else {}
+    # Valid single-file GSTR-2B has docdata/itcsumm. Anything else (chunk links, error payload,
+    # 'not generated') -> let the UI route decide, so we never mis-report a month.
+    if not isinstance(root, dict) or not ("docdata" in root or "itcsumm" in root):
+        return "fast_unavailable", f"{month} {year}: unexpected response keys {list(root)[:8] if isinstance(root, dict) else type(root).__name__}"
+
+    os.makedirs(temp_dir, exist_ok=True)
+    fname = f"GSTR2B_{rtnprd}.json"
+    with open(os.path.join(temp_dir, fname), "w", encoding="utf-8") as f:
+        f.write(body)
+    report(100, "File downloaded successfully.")
+    return "downloaded", fname
 
 
 def run_gstr2b(cfg, temp_dir):

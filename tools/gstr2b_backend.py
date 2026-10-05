@@ -9,6 +9,7 @@ import os
 import tempfile
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from selenium import webdriver
@@ -84,28 +85,76 @@ def _challenge_preview(browser) -> bytes:
         return b""
 
 
+_CHROME_PATHS = (
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    os.path.join(os.getenv("LOCALAPPDATA", ""), "Google", "Chrome", "Application", "chrome.exe"),
+)
+
+
+def _driver_candidates() -> list[str]:
+    """chromedriver locations to try, most specific first."""
+    here = Path(__file__).resolve().parent
+    found = []
+    env = os.getenv("CHROMEDRIVER")
+    if env:
+        found.append(env)
+    for folder in (here, here.parent, Path.cwd(), Path(r"C:\chromedriver")):
+        for name in ("chromedriver.exe", "chromedriver"):
+            found.append(str(folder / name))
+    return [x for x in found if Path(x).is_file()]
+
+
 def _new_driver(download_dir: str):
-    options = webdriver.ChromeOptions()
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1440,1100")
-    options.add_experimental_option("prefs", {
-        "download.default_directory": download_dir,
-        "download.prompt_for_download": False,
-        "download.directory_upgrade": True,
-        "safebrowsing.enabled": True,
-    })
-    chrome = os.getenv("CHROME_BIN")
-    driver = os.getenv("CHROMEDRIVER")
-    if chrome:
-        options.binary_location = chrome
-    if driver and Path(driver).exists():
-        from selenium.webdriver.chrome.service import Service
-        browser = webdriver.Chrome(service=Service(driver), options=options)
-    else:
-        browser = webdriver.Chrome(options=options)
+    def make_options():
+        options = webdriver.ChromeOptions()
+        options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1440,1100")
+        # Do not wait for every portal asset (images/ads/trackers) on each navigation.
+        options.page_load_strategy = "eager"
+        options.add_experimental_option("prefs", {
+            "download.default_directory": download_dir,
+            "download.prompt_for_download": False,
+            "download.directory_upgrade": True,
+            "safebrowsing.enabled": True,
+        })
+        chrome = os.getenv("CHROME_BIN") or next((x for x in _CHROME_PATHS if x and Path(x).is_file()), None)
+        if chrome:
+            options.binary_location = chrome
+        return options
+
+    from selenium.webdriver.chrome.service import Service
+
+    errors = []
+    browser = None
+    # 1) a chromedriver we can see (CHROMEDRIVER env, next to the app, C:\chromedriver)
+    for path in _driver_candidates():
+        try:
+            browser = webdriver.Chrome(service=Service(path), options=make_options())
+            break
+        except Exception as exc:
+            errors.append(f"{path}: {str(exc)[:160]}")
+    # 2) Selenium Manager (auto-download)
+    if browser is None:
+        try:
+            browser = webdriver.Chrome(options=make_options())
+        except Exception as exc:
+            errors.append(f"Selenium Manager: {str(exc)[:160]}")
+    # 3) webdriver-manager, if installed
+    if browser is None:
+        try:
+            from webdriver_manager.chrome import ChromeDriverManager
+            browser = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=make_options())
+        except Exception as exc:
+            errors.append(f"webdriver-manager: {str(exc)[:160]}")
+    if browser is None:
+        raise RuntimeError(
+            "Could not start Chrome. Download the chromedriver that matches your Chrome version "
+            "(chrome://version) and put chromedriver.exe in the tools folder, or set CHROMEDRIVER. "
+            "Tried: " + " | ".join(errors))
     # Headless Chrome on the hosted server needs an explicit download policy;
     # prefs alone can leave portal-generated files blocked or undetected.
     browser.execute_cdp_cmd("Page.setDownloadBehavior", {
@@ -234,79 +283,112 @@ def submit_portal_code(session_id: str, code: str) -> tuple[bool, bytes, str]:
 
 
 def download_periods(session_id: str, months: list[tuple[str, str]], quarterly: bool = False, progress=None) -> tuple[bytes, str]:
-    """Download every selected portal file first, then convert and merge them."""
+    """Download each selected period, convert in the background, merge in memory.
+
+    Fast route (direct portal requests) is tried first; any period it cannot serve is retried
+    through the original click-through route, so behaviour never gets worse than before.
+    """
     state = _sessions[session_id]
     browser, download_dir = state["driver"], state["download_dir"]
     periods = list(months)
     if quarterly:
         periods, _, _, _ = core.resolve_quarterly_periods(periods)
 
-    downloaded: list[tuple[str, str, str, int]] = []
     errors: list[str] = []
     total = len(periods)
+    timings = {"download": 0.0, "convert_wait": 0.0, "merge": 0.0}
+    fast_ok, fast_fails, fast_used, ui_used = True, 0, 0, 0
+
+    # One worker: conversion (CPU) overlaps with portal waiting (I/O). Progress is only ever
+    # reported from this thread because Streamlit UI calls are not thread-safe.
+    pool = ThreadPoolExecutor(max_workers=1)
+    jobs: list[tuple[object, str, int]] = []      # (future, month, year) in period order
+
+    t_dl = time.perf_counter()
     for index, (month, year) in enumerate(periods, 1):
+        def cb(pct, message, month=month, year=year, index=index):
+            if progress:
+                progress(pct, f"{month} {year} ({index}/{total}) — {message}")
+
         if progress:
-            progress(0, f"Downloading {month} {year} ({index}/{total}) — opening GST Portal period…")
+            progress(0, f"Downloading {month} {year} ({index}/{total})…")
+
+        status, info = "fast_unavailable", ""
         try:
-            status, info = core.gst_download_gstr2b_json(
-                browser, month, year, download_dir,
-                is_quarterly=quarterly,
-                progress_callback=lambda pct, message, month=month, year=year, index=index: (
-                    progress(pct, f"{month} {year} ({index}/{total}) — {message}") if progress else None
-                ),
-            )
+            if fast_ok:
+                status, info = core.gst_download_gstr2b_json_fast(
+                    browser, month, year, download_dir, is_quarterly=quarterly, progress_callback=cb)
+                if status == "fast_unavailable":
+                    fast_fails += 1
+                    print(f"[GSTR-2B] fast route unavailable for {month} {year}: {info}")
+                    if fast_fails >= 2:
+                        fast_ok = False           # stop retrying direct route for this run
+                else:
+                    fast_fails = 0
+                    fast_used += 1
+            if status == "fast_unavailable":
+                status, info = core.gst_download_gstr2b_json(
+                    browser, month, year, download_dir, is_quarterly=quarterly, progress_callback=cb)
+                ui_used += 1
         except Exception as exc:
             errors.append(f"{month} {year}: portal request failed: {str(exc)[:180]}")
             if progress:
                 progress(100, f"{month} {year} ({index}/{total}) — failed; continuing to next period.")
             continue
+
         if status != "downloaded":
             errors.append(f"{month} {year}: {info}")
             if progress:
                 progress(100, f"{month} {year} ({index}/{total}) — {info}")
             continue
+
         path = os.path.join(download_dir, info)
-        converted_path = os.path.join(download_dir, f"{year}-{core.MONTHS.index(month)+1:02d}.xlsx")
-        downloaded.append((path, converted_path, month, int(year)))
+        jobs.append((pool.submit(core.convert_period_to_workbook, path, quarterly), month, int(year)))
         if progress:
             progress(100, f"Downloaded {month} {year} ({index}/{total}).")
+    timings["download"] = time.perf_counter() - t_dl
 
-    if not downloaded:
+    if not jobs:
+        pool.shutdown(wait=False)
         raise RuntimeError("No GSTR-2B files were downloaded. " + "; ".join(errors))
 
-    # Keep portal navigation/download uninterrupted; do all CPU-heavy conversions afterward.
-    converted: list[str] = []
-    for index, (source_path, converted_path, month, year) in enumerate(downloaded, 1):
+    # Most conversions already finished while the portal was being polled; wait for the rest.
+    t_cv = time.perf_counter()
+    workbooks = []
+    for n, (future, month, year) in enumerate(jobs, 1):
         if progress:
-            progress(
-                int((index - 1) * 100 / len(downloaded)),
-                f"Converting downloaded files — {month} {year} ({index}/{len(downloaded)})…",
-            )
-        core.convert_and_save_period_excel(
-            source_path,
-            converted_path,
-            period_label=f"{month[:3]}-{year}",
-            quarterly=quarterly,
-        )
-        converted.append(converted_path)
+            progress(int((n - 1) * 100 / len(jobs)), f"Converting — {month} {year} ({n}/{len(jobs)})…")
+        try:
+            workbooks.append(future.result())
+        except Exception as exc:
+            errors.append(f"{month} {year}: conversion failed: {str(exc)[:180]}")
         if progress:
-            progress(
-                int(index * 100 / len(downloaded)),
-                f"Converted {month} {year} ({index}/{len(downloaded)}).",
-            )
+            progress(int(n * 100 / len(jobs)), f"Converted {month} {year} ({n}/{len(jobs)}).")
+    pool.shutdown(wait=True)
+    timings["convert_wait"] = time.perf_counter() - t_cv
+    if not workbooks:
+        raise RuntimeError("Downloaded files could not be converted. " + "; ".join(errors))
 
     output = os.path.join(download_dir, "merged.xlsx")
     if progress:
         progress(0, "Merging converted periods into one Excel workbook…")
-    core.merge_all_gstr2b_periods(converted, output)
+    t_mg = time.perf_counter()
+    core.merge_period_workbooks(workbooks, output)
+    timings["merge"] = time.perf_counter() - t_mg
     if progress:
         progress(100, "Merged workbook is ready.")
     with open(output, "rb") as handle:
         data = handle.read()
-    description = f"Prepared {len(converted)} period(s)."
+
+    print(f"[GSTR-2B timing] download={timings['download']:.1f}s convert_wait={timings['convert_wait']:.1f}s "
+          f"merge={timings['merge']:.1f}s fast={fast_used} ui={ui_used}")
+    description = (f"Prepared {len(workbooks)} period(s) "
+                   f"(download {timings['download']:.0f}s, convert wait {timings['convert_wait']:.0f}s, "
+                   f"merge {timings['merge']:.0f}s; direct {fast_used}, portal-UI {ui_used}).")
     if errors:
         description += " Some periods were skipped: " + "; ".join(errors)
     return data, description
+
 
 def get_session_browser(session_id: str):
     """Return the live browser for an authenticated session, if it still exists."""

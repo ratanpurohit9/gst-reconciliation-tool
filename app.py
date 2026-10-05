@@ -2263,6 +2263,7 @@ if st.session_state.app_stage == 'setup':
                     )
                     try:
                         from tools import gstr2b_backend as _g2b
+                        from modules import gstr2b_scene as _gstr2b_scene
                         _sid_key = "backend_gstr2b_session_id"
                         _sid = st.session_state.get(_sid_key)
                         _period_key = "backend_gstr2b_periods"
@@ -2370,24 +2371,16 @@ if st.session_state.app_stage == 'setup':
                             if st.button("Download and prepare merged GSTR-2B Excel", type="primary", key="backend_gstr2b_download"):
                                 _download_visual = st.empty()
                                 _download_periods = list(st.session_state[_period_key])
+                                if st.session_state.get("backend_gstr2b_quarterly", False):
+                                    # QRMP: only quarter-end months are really downloaded
+                                    _download_periods = list(_g2b.core.resolve_quarterly_periods(_download_periods)[0])
                                 _period_total = max(1, len(_download_periods))
                                 _period_states = {
                                     f"{_month} {_year}": {"state": "pending", "pct": 0}
                                     for _month, _year in _download_periods
                                 }
-                                # Show the full fiscal-year strip (Apr–Mar); periods outside the
-                                # requested range remain quiet and clearly marked as not selected.
-                                _selected_fy_starts = [
-                                    int(_year) if _g2b.core.MONTHS.index(_month) >= 3 else int(_year) - 1
-                                    for _month, _year in _download_periods
-                                ]
-                                _dashboard_periods = []
-                                for _fy_start in range(min(_selected_fy_starts), max(_selected_fy_starts) + 1):
-                                    for _month_index in list(range(3, 12)) + list(range(0, 3)):
-                                        _dashboard_year = _fy_start if _month_index >= 3 else _fy_start + 1
-                                        _dashboard_periods.append(
-                                            (_g2b.core.MONTHS[_month_index], str(_dashboard_year))
-                                        )
+                                _dashboard_periods = list(_download_periods)  # real months / quarters only
+                                _period_meta = {}
                                 _download_stage = {"name": "download", "overall": 0}
                                 _download_status_map = {
                                     "pending": ("◷", "Pending", "pending"),
@@ -2440,6 +2433,16 @@ if st.session_state.app_stage == 'setup':
                                                 elif _message_lower.startswith("downloaded "):
                                                     _period_states[_active_period]["state"] = "downloaded"
                                                     _period_states[_active_period]["pct"] = 100
+                                                    try:
+                                                        _dl_dir = _g2b._sessions[_sid]["download_dir"]
+                                                        _jf = [os.path.join(_dl_dir, f) for f in os.listdir(_dl_dir) if f.lower().endswith(".json")]
+                                                        _size_mb = os.path.getsize(max(_jf, key=os.path.getmtime)) / 1048576
+                                                    except Exception:
+                                                        _size_mb = None
+                                                    _period_meta[_active_period] = (
+                                                        f"{_size_mb:.2f} MB" if _size_mb is not None else "",
+                                                        __import__("datetime").datetime.now().strftime("%I:%M:%S %p"),
+                                                    )
                                                 else:
                                                     _period_states[_active_period]["state"] = "downloading"
                                                     _period_states[_active_period]["pct"] = _percent
@@ -2478,6 +2481,10 @@ if st.session_state.app_stage == 'setup':
                                                 _active_class = " current" if _state in ("downloading", "converting") else ""
                                                 if _state == "downloading":
                                                     _detail = f"{_pct}% workflow"
+                                                elif _state in ("downloaded", "converting", "complete") and _label in _period_meta:
+                                                    _detail = " · ".join(x for x in _period_meta[_label] if x)
+                                                    if _state == "converting":
+                                                        _detail += " · Preparing"
                                                 elif _state == "downloaded":
                                                     _detail = "Portal file received"
                                                 elif _state == "converting":
@@ -2494,6 +2501,7 @@ if st.session_state.app_stage == 'setup':
                                                     f'<div class="g2b-period {_state_class}{_active_class}">'
                                                     f'<div class="g2b-period-icon">{_icon}</div>'
                                                     f'<b>{html.escape(_month[:3])} {_year}</b>'
+                                                    + ('<small style="color:#2472c8">Quarter-end</small>' if st.session_state.get("backend_gstr2b_quarterly", False) else '') +
                                                     f'<span class="g2b-period-state">{_state_label}</span>'
                                                     f'<small>{html.escape(_detail)}</small></div>'
                                                 )
@@ -2509,6 +2517,10 @@ if st.session_state.app_stage == 'setup':
                                                           if _has_failed else "GSTR-2B workbook is ready")
                                                 )
                                             _celebrate = " ✨" if _all_success else ""
+                                            _active_label = next((k for k, v in _period_states.items() if v["state"] in ("downloading", "converting")), "")
+                                            _done_n = sum(1 for v in _period_states.values() if v["state"] in ("downloaded", "converting", "complete"))
+                                            _working = _download_stage["name"] in ("download", "convert", "merge")
+                                            _scene_svg = _gstr2b_scene.build_scene(_dashboard_periods, _period_states, _working)
                                             _download_visual.markdown(
                                                 f"""
                                                 <section class="g2b-live-dashboard">
@@ -2527,28 +2539,8 @@ if st.session_state.app_stage == 'setup':
                                                   <div class="g2b-track-label">
                                                     <span>Portal workflow progress · not byte-level</span><span>{_overall} / 100</span>
                                                   </div>
-                                                  <div class="g2b-scene">
-                                                    <div class="g2b-portal-node">
-                                                      <div class="g2b-browser-window"><div class="g2b-browser-dots"><i></i><i></i><i></i></div>
-                                                        <div class="g2b-browser-lines"><b></b><span></span><span></span></div>
-                                                        <div class="g2b-portal-lock">✓</div></div>
-                                                      <b>GST PORTAL</b><small>Authenticated session</small>
-                                                    </div>
-                                                    <div class="g2b-flow-arrow">›</div>
-                                                    <div class="g2b-engine">
-                                                      <div class="g2b-engine-top"><span class="g2b-light"></span><span class="g2b-engine-title">GSTR-2B DOWNLOAD ENGINE</span><span class="g2b-gear">⚙</span></div>
-                                                      <div class="g2b-engine-mouth"><span class="g2b-engine-file">2B</span></div>
-                                                      <div class="g2b-conveyor"><span class="g2b-moving-doc">▤</span><span class="g2b-moving-doc">▤</span><span class="g2b-moving-doc">▤</span><span class="g2b-moving-doc">▤</span></div>
-                                                    </div>
-                                                    <div class="g2b-flow-arrow">›</div>
-                                                    <div class="g2b-operator" aria-label="Animated accounting assistant">
-                                                      <div class="g2b-person"><div class="g2b-person-hair"></div><div class="g2b-person-face"><i></i><i></i></div><div class="g2b-person-shirt"><b></b></div></div>
-                                                      <div class="g2b-laptop">GST</div><small>Preparing files</small>
-                                                    </div>
-                                                    <div class="g2b-flow-arrow">›</div>
-                                                    <div class="g2b-excel-node"><div class="g2b-folder-shape"><span>X</span><i></i><i></i></div><b>MERGED EXCEL</b><small>Ready to download</small></div>
-                                                  </div>
-                                                  <div class="g2b-month-heading"><b>Financial year periods</b><span>Selected months update from actual portal events</span></div>
+                                                  <div class="g2b-scene {'g2b-idle' if not _working else ''}">{_scene_svg}</div>
+                                                  <div class="g2b-month-heading"><b>{"Quarters (QRMP)" if st.session_state.get("backend_gstr2b_quarterly", False) else "Months"} being downloaded</b><span>Updates from actual portal events</span></div>
                                                   <div class="g2b-period-grid">{''.join(_cards)}</div>
                                                   <div class="g2b-live-note">Month states update from the real portal request, file arrival, conversion, and merge callbacks. The GST Portal does not expose byte-level download percentages.</div>
                                                 </section>
@@ -2622,6 +2614,7 @@ if st.session_state.app_stage == 'setup':
                                                   @keyframes g2b-work{{50%{{transform:translateY(-3px)}}}}
                                                   @keyframes g2b-check{{0%{{transform:scale(.4);opacity:.2}}80%{{transform:scale(1.2)}}100%{{transform:scale(1);opacity:1}}}}
                                                   @keyframes g2b-glow{{50%{{box-shadow:0 0 0 4px #2779f522,0 5px 17px #2779f544}}}}
+                                                  {_gstr2b_scene.SCENE_CSS}
                                                   @media(max-width:1100px){{.g2b-period-grid{{grid-template-columns:repeat(6,minmax(0,1fr))}}}}
                                                   @media(max-width:640px){{.g2b-live-heading h2{{font-size:18px}}.g2b-live-percent{{font-size:27px}}.g2b-scene{{gap:5px;padding:10px 6px}}.g2b-portal-node,.g2b-excel-node{{min-width:55px;font-size:9px}}.g2b-browser-window{{width:58px}}.g2b-engine{{min-width:90px;padding:0 5px 6px}}.g2b-engine-title{{font-size:7px}}.g2b-operator{{display:none}}.g2b-flow-arrow{{font-size:17px}}.g2b-period-grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}
                                                 </style>
