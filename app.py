@@ -2369,36 +2369,155 @@ if st.session_state.app_stage == 'setup':
                             st.success("GST Portal login completed. Ready to fetch the selected GSTR-2B periods.")
                             if st.button("Download and prepare merged GSTR-2B Excel", type="primary", key="backend_gstr2b_download"):
                                 _download_visual = st.empty()
+                                _download_periods = list(st.session_state[_period_key])
+                                _period_total = max(1, len(_download_periods))
+                                _period_states = {
+                                    f"{_month} {_year}": {"state": "pending", "pct": 0}
+                                    for _month, _year in _download_periods
+                                }
+                                _download_stage = {"name": "download", "overall": 0}
+                                _download_status_map = {
+                                    "pending": ("◷", "Pending", "pending"),
+                                    "downloading": ("⟳", "Downloading", "active"),
+                                    "downloaded": ("✓", "Downloaded", "done"),
+                                    "converting": ("⚙", "Converting", "active"),
+                                    "complete": ("✓", "Ready", "done"),
+                                    "failed": ("!", "Skipped / failed", "failed"),
+                                }
                                 with st.status("Starting GST Portal download…", expanded=True) as _download_status:
                                     try:
                                         def _render_download_progress(_percent, _message):
                                             _percent = max(0, min(100, int(_percent)))
-                                            _safe_message = html.escape(str(_message))
+                                            _message_text = str(_message)
+                                            _safe_message = html.escape(_message_text)
+                                            _active_period = next(
+                                                (f"{_month} {_year}" for _month, _year in _download_periods
+                                                 if f"{_month} {_year}".lower() in _message_text.lower()),
+                                                None,
+                                            )
+                                            _index_match = re.search(r"\((\d+)/(\d+)\)", _message_text)
+                                            _period_index = int(_index_match.group(1)) if _index_match else None
+                                            _period_count = int(_index_match.group(2)) if _index_match else _period_total
+
+                                            if "converting downloaded files" in _message_text.lower():
+                                                _download_stage["name"] = "convert"
+                                                _download_stage["overall"] = min(95, 70 + (_percent * 0.25))
+                                                if _active_period:
+                                                    _period_states[_active_period]["state"] = "converting"
+                                                    _period_states[_active_period]["pct"] = 100
+                                            elif "merging converted periods" in _message_text.lower():
+                                                _download_stage["name"] = "merge"
+                                                _download_stage["overall"] = 95 + (_percent * 0.05)
+                                            elif "merged workbook is ready" in _message_text.lower():
+                                                _download_stage["name"] = "complete"
+                                                _download_stage["overall"] = 100
+                                                for _period_state in _period_states.values():
+                                                    if _period_state["state"] != "failed":
+                                                        _period_state["state"] = "complete"
+                                                        _period_state["pct"] = 100
+                                            elif _active_period:
+                                                _message_lower = _message_text.lower()
+                                                if any(_term in _message_lower for _term in ("failed", "not found", "not available", "timeout", "session expired", "error")):
+                                                    _period_states[_active_period]["state"] = "failed"
+                                                    _period_states[_active_period]["pct"] = 100
+                                                elif _message_lower.startswith("converted "):
+                                                    _period_states[_active_period]["state"] = "complete"
+                                                    _period_states[_active_period]["pct"] = 100
+                                                elif _message_lower.startswith("downloaded "):
+                                                    _period_states[_active_period]["state"] = "downloaded"
+                                                    _period_states[_active_period]["pct"] = 100
+                                                else:
+                                                    _period_states[_active_period]["state"] = "downloading"
+                                                    _period_states[_active_period]["pct"] = _percent
+                                                _download_stage["name"] = "download"
+                                                _idx = _period_index or next(
+                                                    (n for n, (_month, _year) in enumerate(_download_periods, 1)
+                                                     if f"{_month} {_year}" == _active_period),
+                                                    1,
+                                                )
+                                                _download_stage["overall"] = min(
+                                                    70,
+                                                    ((_idx - 1) + (_percent / 100.0)) / max(1, _period_count) * 70,
+                                                )
+                                            else:
+                                                _download_stage["overall"] = max(
+                                                    _download_stage["overall"],
+                                                    min(69, _percent * 0.69),
+                                                )
+
+                                            _overall = max(0, min(100, int(_download_stage["overall"])))
+                                            _stage_title = {
+                                                "download": "Downloading selected GSTR-2B periods",
+                                                "convert": "Converting downloaded files",
+                                                "merge": "Merging the Excel workbook",
+                                                "complete": "All available files are ready",
+                                            }.get(_download_stage["name"], "Working on your download")
+                                            _cards = []
+                                            for _month, _year in _download_periods:
+                                                _label = f"{_month} {_year}"
+                                                _info = _period_states[_label]
+                                                _icon, _state_label, _state_class = _download_status_map[_info["state"]]
+                                                _active_class = " current" if _info["state"] in ("downloading", "converting") else ""
+                                                _detail = (
+                                                    f'{_info["pct"]}% portal progress'
+                                                    if _info["state"] == "downloading"
+                                                    else ("Portal file received" if _info["state"] == "downloaded"
+                                                          else ("Preparing workbook" if _info["state"] == "converting"
+                                                                else ("—" if _info["state"] == "pending" else _state_label)))
+                                                )
+                                                _cards.append(
+                                                    f'<div class="g2b-period {_state_class}{_active_class}">'
+                                                    f'<div class="g2b-period-icon">{_icon}</div>'
+                                                    f'<b>{html.escape(_month[:3])} {_year}</b>'
+                                                    f'<span class="g2b-period-state">{_state_label}</span>'
+                                                    f'<small>{html.escape(_detail)}</small></div>'
+                                                )
+                                            _celebrate = " 🎉" if _download_stage["name"] == "complete" else ""
                                             _download_visual.markdown(
                                                 f"""
-                                                <div class="g2b-race-card">
-                                                  <div class="g2b-race-head"><b>🏁 GST Portal run</b><span>{_percent}%</span></div>
-                                                  <div class="g2b-race-message">{_safe_message}</div>
-                                                  <div class="g2b-city-track">
-                                                    <div class="g2b-skyline">🏢　🏙️　🏬　🏢　🏙️　🏬　🏢</div>
-                                                    <div class="g2b-race-fill" style="width:{_percent}%"></div>
-                                                    <div class="g2b-runner" style="left:calc({_percent}% - 22px)">🏃🏻‍♂️<span>〰️📦</span></div>
-                                                  </div>
-                                                  <div class="g2b-race-foot"><span>Portal download → convert → merge</span><span>{_percent} / 100</span></div>
-                                                </div>
+                                                <section class="g2b-live-dashboard">
+                                                  <header class="g2b-live-heading">
+                                                    <div><div class="g2b-live-kicker">GST PORTAL · LIVE DOWNLOAD</div>
+                                                    <h2>{_stage_title}{_celebrate}</h2>
+                                                    <p>{_safe_message}</p></div>
+                                                    <div class="g2b-live-percent">{_overall}%</div>
+                                                  </header>
+                                                  <div class="g2b-progress-track"><div class="g2b-progress-fill" style="width:{_overall}%"></div>
+                                                    <span class="g2b-runner" style="left:calc({_overall}% - 15px)">🏃🏻‍♂️</span></div>
+                                                  <div class="g2b-track-label"><span>Portal workflow progress</span>
+                                                    <span>{_overall} / 100</span></div>
+                                                  <div class="g2b-conveyor"><div class="g2b-machine">📥<small>GSTR-2B</small></div>
+                                                    <div class="g2b-belt"><span>📄</span><span>📄</span><span>📄</span><span>📄</span></div>
+                                                    <div class="g2b-folder">📁<small>Excel</small></div></div>
+                                                  <div class="g2b-period-grid">{''.join(_cards)}</div>
+                                                  <div class="g2b-live-note">Status updates come from the portal download, file arrival, conversion, and merge steps. The portal does not provide byte-level download percentages.</div>
+                                                </section>
                                                 <style>
-                                                  .g2b-race-card{{border:1px solid #c8d8f0;border-radius:16px;padding:14px 18px;margin:10px 0 16px;background:linear-gradient(135deg,#f9fcff,#eaf2ff);box-shadow:0 8px 22px #10234b16}}
-                                                  .g2b-race-head,.g2b-race-foot{{display:flex;justify-content:space-between;align-items:center;color:#10234b}}
-                                                  .g2b-race-head{{font-size:16px}} .g2b-race-head span{{font-size:20px;font-weight:800;color:#1464d2}}
-                                                  .g2b-race-message{{font-size:13px;color:#425575;margin:5px 0 12px;min-height:18px}}
-                                                  .g2b-city-track{{height:48px;position:relative;overflow:hidden;border-radius:12px;background:linear-gradient(180deg,#dff2ff,#f8fcff);border:1px solid #c5def5}}
-                                                  .g2b-skyline{{position:absolute;inset:0;white-space:nowrap;line-height:42px;font-size:26px;opacity:.55;animation:g2b-city-scroll 12s linear infinite}}
-                                                  .g2b-race-fill{{position:absolute;left:0;bottom:0;height:5px;background:linear-gradient(90deg,#34d399,#1680e8);transition:width .35s ease}}
-                                                  .g2b-runner{{position:absolute;top:2px;font-size:26px;white-space:nowrap;transition:left .35s ease;animation:g2b-bounce .42s ease-in-out infinite alternate}}
-                                                  .g2b-runner span{{font-size:14px;vertical-align:middle}}
-                                                  .g2b-race-foot{{font-size:11px;color:#64748b;margin-top:7px}}
-                                                  @keyframes g2b-bounce{{from{{transform:translateY(0)}}to{{transform:translateY(-4px)}}}}
-                                                  @keyframes g2b-city-scroll{{from{{transform:translateX(0)}}to{{transform:translateX(-100px)}}}}
+                                                  .g2b-live-dashboard{{font-family:Arial,sans-serif;border:1px solid #c9ddf6;border-radius:18px;padding:20px;background:linear-gradient(145deg,#f8fcff,#eaf4ff);box-shadow:0 8px 24px #122e5014;margin:10px 0 16px}}
+                                                  .g2b-live-heading{{display:flex;justify-content:space-between;align-items:center;gap:16px;color:#10245a}}
+                                                  .g2b-live-kicker{{font-size:10px;letter-spacing:1.3px;color:#2472c8;font-weight:800}}
+                                                  .g2b-live-heading h2{{font-size:22px;margin:4px 0}} .g2b-live-heading p{{margin:0;color:#50627d;font-size:13px}}
+                                                  .g2b-live-percent{{font-size:34px;font-weight:800;color:#176fe5;min-width:84px;text-align:right}}
+                                                  .g2b-progress-track{{height:18px;position:relative;border-radius:12px;background:#dce7f4;margin:20px 8px 5px;overflow:visible}}
+                                                  .g2b-progress-fill{{height:100%;border-radius:12px;background:linear-gradient(90deg,#40a4ff,#176fe5);transition:width .35s ease;box-shadow:0 2px 9px #2083e555}}
+                                                  .g2b-runner{{position:absolute;top:-17px;font-size:25px;transition:left .35s ease;animation:g2b-run .45s ease-in-out infinite alternate}}
+                                                  .g2b-track-label{{display:flex;justify-content:space-between;color:#64748b;font-size:11px;margin:0 8px 14px}}
+                                                  .g2b-conveyor{{display:flex;align-items:center;gap:14px;background:linear-gradient(#dff0ff,#eff8ff);border:1px solid #d1e4f8;border-radius:14px;padding:10px 14px;margin:10px 0 14px}}
+                                                  .g2b-machine,.g2b-folder{{font-size:25px;text-align:center;color:#14366c;min-width:68px}}
+                                                  .g2b-machine small,.g2b-folder small{{display:block;font-size:9px;font-weight:700}}
+                                                  .g2b-belt{{height:35px;flex:1;overflow:hidden;border-radius:8px;background:#193d6c;display:flex;align-items:center;justify-content:space-around;box-shadow:inset 0 4px 7px #071a37}}
+                                                  .g2b-belt span{{font-size:21px;animation:g2b-doc 1.4s linear infinite}} .g2b-belt span:nth-child(2){{animation-delay:.25s}} .g2b-belt span:nth-child(3){{animation-delay:.5s}} .g2b-belt span:nth-child(4){{animation-delay:.75s}}
+                                                  .g2b-period-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px}}
+                                                  .g2b-period{{min-height:116px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;text-align:center;padding:9px 5px;border:1px solid #dce6f2;border-radius:12px;background:#ffffffb8;color:#172d5b}}
+                                                  .g2b-period-icon{{font-size:21px;color:#9aa9bd}} .g2b-period-state{{font-size:11px;color:#74839a}}
+                                                  .g2b-period small{{font-size:10px;color:#6c7d95}} .g2b-period.done{{border-color:#b8e7d0;background:#f2fff8}} .g2b-period.done .g2b-period-icon,.g2b-period.done .g2b-period-state{{color:#09985c}}
+                                                  .g2b-period.current{{border:2px solid #2779f5;background:#f5faff}} .g2b-period.current .g2b-period-icon{{color:#2779f5;animation:g2b-spin 1.2s linear infinite}}
+                                                  .g2b-period.failed{{border-color:#f4c2bd;background:#fff8f7}} .g2b-period.failed .g2b-period-icon,.g2b-period.failed .g2b-period-state{{color:#c0392b}}
+                                                  .g2b-live-note{{font-size:10px;color:#74839a;margin-top:12px}}
+                                                  @keyframes g2b-run{{from{{transform:translateY(0)}}to{{transform:translateY(-5px)}}}}
+                                                  @keyframes g2b-doc{{from{{transform:translateX(14px)}}to{{transform:translateX(-14px)}}}}
+                                                  @keyframes g2b-spin{{to{{transform:rotate(360deg)}}}}
+                                                  @media(max-width:640px){{.g2b-live-heading h2{{font-size:18px}}.g2b-live-percent{{font-size:27px}}.g2b-period-grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}
                                                 </style>
                                                 """,
                                                 unsafe_allow_html=True,
